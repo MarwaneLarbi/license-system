@@ -19,10 +19,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: license-system
-
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
   # AddressSanitizer + UndefinedBehaviourSanitizer (GCC)
@@ -224,4 +220,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: valgrind-report
-          path: license-system/valgrind-output.txt
+          path: valgrind-output.txt
