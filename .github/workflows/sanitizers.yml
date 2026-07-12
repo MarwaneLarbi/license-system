@@ -1,0 +1,223 @@
+name: Sanitizers
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'license-system/**'
+      - '.github/workflows/sanitizers.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'license-system/**'
+      - '.github/workflows/sanitizers.yml'
+  schedule:
+    # Run nightly on main to catch regressions early.
+    - cron: '0 3 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # AddressSanitizer + UndefinedBehaviourSanitizer (GCC)
+  # ────────────────────────────────────────────────────────────────────────────
+  asan-ubsan-gcc:
+    name: ASan + UBSan / GCC
+    runs-on: ubuntu-24.04
+
+    env:
+      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:abort_on_error=1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ \
+            libssl-dev libargon2-dev pkg-config
+
+      - name: Configure with ASan + UBSan
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DLICENSE_BUILD_TESTS=ON \
+            -DLICENSE_ENABLE_TPM=OFF \
+            -DLICENSE_SANITIZERS=ON \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests under ASan + UBSan
+        run: ctest --test-dir build --output-on-failure --parallel 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # AddressSanitizer + UndefinedBehaviourSanitizer (Clang)
+  # ────────────────────────────────────────────────────────────────────────────
+  asan-ubsan-clang:
+    name: ASan + UBSan / Clang
+    runs-on: ubuntu-24.04
+
+    env:
+      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:abort_on_error=1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang-18 \
+            libssl-dev libargon2-dev pkg-config
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DLICENSE_BUILD_TESTS=ON \
+            -DLICENSE_ENABLE_TPM=OFF \
+            -DLICENSE_SANITIZERS=ON \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+        env:
+          CC: clang-18
+          CXX: clang++-18
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure --parallel 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # ThreadSanitizer (Clang) — detect data races
+  # ────────────────────────────────────────────────────────────────────────────
+  thread-sanitizer:
+    name: ThreadSanitizer / Clang
+    runs-on: ubuntu-24.04
+
+    env:
+      TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang-18 \
+            libssl-dev libargon2-dev pkg-config
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DLICENSE_BUILD_TESTS=ON \
+            -DLICENSE_ENABLE_TPM=OFF \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
+        env:
+          CC: clang-18
+          CXX: clang++-18
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests under TSan
+        run: ctest --test-dir build --output-on-failure --parallel 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # MemorySanitizer (Clang) — detect uninitialised reads
+  # MSan requires all dependencies compiled with MSan; we build argon2/nlohmann
+  # via FetchContent and skip OpenSSL (instrument only project code).
+  # ────────────────────────────────────────────────────────────────────────────
+  memory-sanitizer:
+    name: MemorySanitizer / Clang
+    runs-on: ubuntu-24.04
+
+    env:
+      MSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang-18 \
+            libssl-dev pkg-config
+
+      - name: Configure (MSan, FetchContent argon2, no TPM)
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DLICENSE_BUILD_TESTS=ON \
+            -DLICENSE_ENABLE_TPM=OFF \
+            -DCMAKE_CXX_FLAGS="-fsanitize=memory -fno-omit-frame-pointer -fsanitize-memory-track-origins=2" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=memory"
+        env:
+          CC: clang-18
+          CXX: clang++-18
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests under MSan
+        # Some OpenSSL internals may trigger false positives; suppress them.
+        run: |
+          MSAN_SYMBOLIZER_PATH=$(which llvm-symbolizer-18 2>/dev/null || true)
+          ctest --test-dir build --output-on-failure --parallel 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Valgrind (Memcheck) — on GCC Release binary
+  # ────────────────────────────────────────────────────────────────────────────
+  valgrind:
+    name: Valgrind Memcheck
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build valgrind \
+            libssl-dev libargon2-dev pkg-config
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DLICENSE_BUILD_TESTS=ON \
+            -DLICENSE_ENABLE_TPM=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests under Valgrind
+        run: |
+          ctest --test-dir build \
+            --output-on-failure \
+            --parallel 1 \
+            --overwrite MemoryCheckCommand="$(which valgrind)" \
+            --overwrite MemoryCheckCommandOptions="--leak-check=full --error-exitcode=1 --show-reachable=yes --track-origins=yes --suppressions=$(pwd)/../.valgrind-suppressions" \
+            -T memcheck 2>&1 | tee valgrind-output.txt
+
+      - name: Upload Valgrind output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valgrind-report
+          path: valgrind-output.txt

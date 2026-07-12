@@ -1,0 +1,521 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'        # e.g. v1.2.3
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc*'    # e.g. v1.2.3-rc1
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # Never cancel an in-flight release
+
+defaults:
+  run:
+    working-directory: license-system
+
+env:
+  # Parsed from the tag name (v1.2.3 → 1.2.3).
+  VERSION: ${{ github.ref_name }}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BUILD JOBS  (all run in parallel)
+# ══════════════════════════════════════════════════════════════════════════════
+
+jobs:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Linux x86_64 — GCC, statically linked where possible
+  # ────────────────────────────────────────────────────────────────────────────
+  release-linux-x64:
+    name: Release / Linux x86_64
+    runs-on: ubuntu-22.04       # LTS — broadest glibc compatibility
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            libssl-dev libargon2-dev \
+            libtss2-dev pkg-config \
+            strip
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DLICENSE_BUILD_TESTS=OFF \
+            -DLICENSE_ENABLE_TPM=ON \
+            -DLICENSE_SANITIZERS=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Strip binaries
+        run: |
+          strip --strip-unneeded build/client/license-client
+          strip --strip-unneeded build/server/license-server
+
+      - name: Package
+        run: |
+          ARCHIVE="license-system-${{ env.VERSION }}-linux-x64.tar.gz"
+          mkdir -p dist/license-system
+          cp build/client/license-client   dist/license-system/
+          cp build/server/license-server   dist/license-system/
+          cp README.md                      dist/license-system/
+          cp scripts/end_to_end.sh         dist/license-system/
+          # Include an example pubkeys template.
+          printf '{\n  "version": "1",\n  "server_x25519_pub":  "REPLACE_WITH_OUTPUT_OF_license-server_init-keys",\n  "server_ed25519_pub": "REPLACE_WITH_OUTPUT_OF_license-server_init-keys"\n}\n' \
+            > dist/license-system/server_pubkeys.json.example
+          tar -czf "$ARCHIVE" -C dist license-system
+          sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x64
+          path: |
+            license-system/${{ env.ARCHIVE }}
+            license-system/${{ env.ARCHIVE }}.sha256
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Linux ARM64
+  # ────────────────────────────────────────────────────────────────────────────
+  release-linux-arm64:
+    name: Release / Linux ARM64
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            libssl-dev libargon2-dev \
+            libtss2-dev pkg-config
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DLICENSE_BUILD_TESTS=OFF \
+            -DLICENSE_ENABLE_TPM=ON \
+            -DLICENSE_SANITIZERS=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Strip binaries
+        run: |
+          strip --strip-unneeded build/client/license-client
+          strip --strip-unneeded build/server/license-server
+
+      - name: Package
+        run: |
+          ARCHIVE="license-system-${{ env.VERSION }}-linux-arm64.tar.gz"
+          mkdir -p dist/license-system
+          cp build/client/license-client   dist/license-system/
+          cp build/server/license-server   dist/license-system/
+          cp README.md                      dist/license-system/
+          cp scripts/end_to_end.sh         dist/license-system/
+          printf '{\n  "version": "1",\n  "server_x25519_pub":  "REPLACE_WITH_OUTPUT_OF_license-server_init-keys",\n  "server_ed25519_pub": "REPLACE_WITH_OUTPUT_OF_license-server_init-keys"\n}\n' \
+            > dist/license-system/server_pubkeys.json.example
+          tar -czf "$ARCHIVE" -C dist license-system
+          sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-arm64
+          path: |
+            license-system/${{ env.ARCHIVE }}
+            license-system/${{ env.ARCHIVE }}.sha256
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Windows x64 — MSVC
+  # ────────────────────────────────────────────────────────────────────────────
+  release-windows-x64:
+    name: Release / Windows x64
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install OpenSSL
+        run: choco install openssl --no-progress -y
+        shell: pwsh
+
+      - name: Configure
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+            -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL-Win64" `
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON `
+            -DLICENSE_BUILD_TESTS=OFF `
+            -DLICENSE_ENABLE_TPM=ON `
+            -DLICENSE_SANITIZERS=OFF
+        shell: pwsh
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+        shell: pwsh
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $VERSION = "${{ env.VERSION }}"
+          $ARCHIVE = "license-system-$VERSION-windows-x64.zip"
+          New-Item -ItemType Directory -Path dist/license-system | Out-Null
+          Copy-Item build/client/Release/license-client.exe dist/license-system/
+          Copy-Item build/server/Release/license-server.exe dist/license-system/
+          Copy-Item README.md                               dist/license-system/
+          @'
+          {
+            "version": "1",
+            "server_x25519_pub":  "REPLACE_WITH_OUTPUT_OF_license-server_init-keys",
+            "server_ed25519_pub": "REPLACE_WITH_OUTPUT_OF_license-server_init-keys"
+          }
+          '@ | Set-Content dist/license-system/server_pubkeys.json.example
+          Compress-Archive -Path dist/license-system -DestinationPath $ARCHIVE
+          $hash = (Get-FileHash $ARCHIVE -Algorithm SHA256).Hash.ToLower()
+          "$hash  $ARCHIVE" | Set-Content "$ARCHIVE.sha256"
+          echo "ARCHIVE=$ARCHIVE" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x64
+          path: |
+            license-system/${{ env.ARCHIVE }}
+            license-system/${{ env.ARCHIVE }}.sha256
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # macOS ARM64 — Apple Silicon (M1/M2/M3)
+  # ────────────────────────────────────────────────────────────────────────────
+  release-macos-arm64:
+    name: Release / macOS arm64
+    runs-on: macos-latest      # macos-14 — Apple M1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake ninja openssl@3 argon2 pkg-config
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DLICENSE_BUILD_TESTS=OFF \
+            -DLICENSE_ENABLE_TPM=OFF \
+            -DLICENSE_SANITIZERS=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Strip + sign ad-hoc (required to run on macOS)
+        run: |
+          strip build/client/license-client
+          strip build/server/license-server
+          codesign --force --sign - build/client/license-client
+          codesign --force --sign - build/server/license-server
+
+      - name: Package
+        run: |
+          ARCHIVE="license-system-${{ env.VERSION }}-macos-arm64.tar.gz"
+          mkdir -p dist/license-system
+          cp build/client/license-client   dist/license-system/
+          cp build/server/license-server   dist/license-system/
+          cp README.md                      dist/license-system/
+          cp scripts/end_to_end.sh         dist/license-system/
+          printf '{\n  "version": "1",\n  "server_x25519_pub":  "REPLACE_WITH_OUTPUT_OF_license-server_init-keys",\n  "server_ed25519_pub": "REPLACE_WITH_OUTPUT_OF_license-server_init-keys"\n}\n' \
+            > dist/license-system/server_pubkeys.json.example
+          tar -czf "$ARCHIVE" -C dist license-system
+          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-arm64
+          path: |
+            license-system/${{ env.ARCHIVE }}
+            license-system/${{ env.ARCHIVE }}.sha256
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # macOS x86_64 — Intel
+  # ────────────────────────────────────────────────────────────────────────────
+  release-macos-x64:
+    name: Release / macOS x86_64
+    runs-on: macos-13          # Last Intel runner
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake ninja openssl@3 argon2 pkg-config
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DLICENSE_BUILD_TESTS=OFF \
+            -DLICENSE_ENABLE_TPM=OFF \
+            -DLICENSE_SANITIZERS=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Strip + sign ad-hoc
+        run: |
+          strip build/client/license-client
+          strip build/server/license-server
+          codesign --force --sign - build/client/license-client
+          codesign --force --sign - build/server/license-server
+
+      - name: Package
+        run: |
+          ARCHIVE="license-system-${{ env.VERSION }}-macos-x64.tar.gz"
+          mkdir -p dist/license-system
+          cp build/client/license-client   dist/license-system/
+          cp build/server/license-server   dist/license-system/
+          cp README.md                      dist/license-system/
+          cp scripts/end_to_end.sh         dist/license-system/
+          printf '{\n  "version": "1",\n  "server_x25519_pub":  "REPLACE_WITH_OUTPUT_OF_license-server_init-keys",\n  "server_ed25519_pub": "REPLACE_WITH_OUTPUT_OF_license-server_init-keys"\n}\n' \
+            > dist/license-system/server_pubkeys.json.example
+          tar -czf "$ARCHIVE" -C dist license-system
+          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-x64
+          path: |
+            license-system/${{ env.ARCHIVE }}
+            license-system/${{ env.ARCHIVE }}.sha256
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # macOS Universal Binary — fat binary (arm64 + x86_64 in one file)
+  # ────────────────────────────────────────────────────────────────────────────
+  release-macos-universal:
+    name: Release / macOS Universal
+    runs-on: macos-latest
+    needs: [release-macos-arm64, release-macos-x64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download arm64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-arm64
+          path: dl/arm64
+
+      - name: Download x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-x64
+          path: dl/x64
+
+      - name: Extract both builds
+        working-directory: license-system
+        run: |
+          mkdir -p extracted/arm64 extracted/x64
+          tar -xzf "$(ls dl/arm64/*.tar.gz | head -1)" -C extracted/arm64
+          tar -xzf "$(ls dl/x64/*.tar.gz | head -1)"  -C extracted/x64
+
+      - name: Create universal binaries with lipo
+        working-directory: license-system
+        run: |
+          mkdir -p universal/license-system
+          lipo -create \
+            extracted/arm64/license-system/license-client \
+            extracted/x64/license-system/license-client \
+            -output universal/license-system/license-client
+          lipo -create \
+            extracted/arm64/license-system/license-server \
+            extracted/x64/license-system/license-server \
+            -output universal/license-system/license-server
+          codesign --force --sign - universal/license-system/license-client
+          codesign --force --sign - universal/license-system/license-server
+          lipo -info universal/license-system/license-client
+
+      - name: Package universal
+        working-directory: license-system
+        run: |
+          ARCHIVE="license-system-${{ env.VERSION }}-macos-universal.tar.gz"
+          cp README.md         universal/license-system/
+          cp scripts/end_to_end.sh universal/license-system/
+          printf '{\n  "version": "1",\n  "server_x25519_pub":  "REPLACE_WITH_OUTPUT_OF_license-server_init-keys",\n  "server_ed25519_pub": "REPLACE_WITH_OUTPUT_OF_license-server_init-keys"\n}\n' \
+            > universal/license-system/server_pubkeys.json.example
+          tar -czf "$ARCHIVE" -C universal license-system
+          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-universal
+          path: |
+            license-system/${{ env.ARCHIVE }}
+            license-system/${{ env.ARCHIVE }}.sha256
+          retention-days: 7
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CREATE GITHUB RELEASE  — runs after all builds succeed
+# ══════════════════════════════════════════════════════════════════════════════
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-24.04
+    needs:
+      - release-linux-x64
+      - release-linux-arm64
+      - release-windows-x64
+      - release-macos-arm64
+      - release-macos-x64
+      - release-macos-universal
+
+    permissions:
+      contents: write    # Required to create releases and upload assets
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: release-*
+          merge-multiple: false
+
+      - name: Flatten artifacts into one directory
+        run: |
+          mkdir -p all-assets
+          find release-artifacts -type f | xargs -I{} cp {} all-assets/
+          echo "Release assets:"
+          ls -lh all-assets/
+
+      - name: Generate combined checksums file
+        run: |
+          cd all-assets
+          # Merge all individual .sha256 files into one.
+          cat *.sha256 | sort > "license-system-${{ env.VERSION }}-checksums.txt"
+          echo "Checksums:"
+          cat "license-system-${{ env.VERSION }}-checksums.txt"
+
+      - name: Determine release type
+        id: release-type
+        run: |
+          if [[ "${{ env.VERSION }}" == *"-rc"* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate release notes
+        id: release-notes
+        run: |
+          VERSION="${{ env.VERSION }}"
+          cat > release-notes.md << 'NOTES'
+          ## Offline License Key Management System
+
+          ### What's included
+
+          Each archive contains:
+          - `license-client` — customer-side CLI tool
+          - `license-server` — vendor-side CLI tool (run on your air-gapped machine)
+          - `server_pubkeys.json.example` — template for the public-key config file
+          - `README.md` — full documentation
+          - `end_to_end.sh` — demo script (Linux/macOS)
+
+          ### Quick start
+
+          ```bash
+          # 1. VENDOR — generate keystore + public-key config
+          ./license-server init-keys \
+              --keystore vendor_keystore.json \
+              --pub-out  server_pubkeys.json
+
+          # 2. Distribute server_pubkeys.json to customers
+
+          # 3. CUSTOMER — generate request
+          ./license-client --config server_pubkeys.json \
+              generate-request myapp-pro "Alice Smith"
+
+          # 4. VENDOR — issue license
+          ./license-server generate-license \
+              --keystore vendor_keystore.json \
+              --blob <blob> --product myapp-pro --days 365
+
+          # 5. CUSTOMER — activate + verify
+          ./license-client --config server_pubkeys.json activate <token>
+          ./license-client --config server_pubkeys.json verify myapp-pro
+          ```
+
+          All output is available as `--json` for scripting.
+
+          ### Verify downloads
+
+          ```bash
+          sha256sum --check license-system-VERSION-checksums.txt
+          ```
+
+          ### Platform notes
+
+          | Platform | Notes |
+          |---|---|
+          | Linux x64 / arm64 | TPM 2.0 hardware binding enabled (requires `libtss2` at runtime) |
+          | Windows x64 | TPM 2.0 via Windows TBS API (enabled by default) |
+          | macOS arm64 / x64 | Software TPM fallback (macOS Secure Enclave not supported yet) |
+          | macOS Universal | Fat binary — runs natively on both Intel and Apple Silicon |
+          NOTES
+          echo "notes-file=release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "License System ${{ env.VERSION }}"
+          tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          prerelease: ${{ steps.release-type.outputs.prerelease }}
+          draft: false
+          fail_on_unmatched_files: true
+          files: |
+            all-assets/license-system-${{ env.VERSION }}-linux-x64.tar.gz
+            all-assets/license-system-${{ env.VERSION }}-linux-x64.tar.gz.sha256
+            all-assets/license-system-${{ env.VERSION }}-linux-arm64.tar.gz
+            all-assets/license-system-${{ env.VERSION }}-linux-arm64.tar.gz.sha256
+            all-assets/license-system-${{ env.VERSION }}-windows-x64.zip
+            all-assets/license-system-${{ env.VERSION }}-windows-x64.zip.sha256
+            all-assets/license-system-${{ env.VERSION }}-macos-arm64.tar.gz
+            all-assets/license-system-${{ env.VERSION }}-macos-arm64.tar.gz.sha256
+            all-assets/license-system-${{ env.VERSION }}-macos-x64.tar.gz
+            all-assets/license-system-${{ env.VERSION }}-macos-x64.tar.gz.sha256
+            all-assets/license-system-${{ env.VERSION }}-macos-universal.tar.gz
+            all-assets/license-system-${{ env.VERSION }}-macos-universal.tar.gz.sha256
+            all-assets/license-system-${{ env.VERSION }}-checksums.txt
