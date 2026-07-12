@@ -14,18 +14,15 @@ env:
   VERSION: ${{ github.ref_name }}
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HELPERS — shared packaging step used by each platform
+# LAYOUT DETECTION
+#
+# Each build job starts with a "Detect source root" step (id: src) that sets
+# steps.src.outputs.root to the absolute path containing CMakeLists.txt.
+#
+# Handled layouts:
+#   Monorepo  — $GITHUB_WORKSPACE/license-system/CMakeLists.txt exists
+#   Standalone — $GITHUB_WORKSPACE/CMakeLists.txt is at repo root
 # ══════════════════════════════════════════════════════════════════════════════
-#
-# Each build job:
-#   1. Installs dependencies
-#   2. cmake configure + build
-#   3. Packages into a tar.gz / zip
-#   4. Outputs the archive filename via steps.<id>.outputs.archive
-#   5. Uploads the archive + sha256 as an Actions artifact
-#
-# The final create-release job downloads all artifacts and publishes
-# a GitHub Release with all platform binaries attached.
 
 jobs:
 
@@ -39,6 +36,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
@@ -48,7 +54,7 @@ jobs:
             libtss2-dev pkg-config binutils
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -59,18 +65,18 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Strip binaries
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           strip --strip-unneeded build/client/license-client
           strip --strip-unneeded build/server/license-server
 
       - name: Package
         id: pkg
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           ARCHIVE="license-system-${VERSION}-linux-x64.tar.gz"
           mkdir -p dist/license-system
@@ -89,8 +95,8 @@ jobs:
         with:
           name: release-linux-x64
           path: |
-            license-system/${{ steps.pkg.outputs.archive }}
-            license-system/${{ steps.pkg.outputs.archive }}.sha256
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}.sha256
           retention-days: 7
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -103,6 +109,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
@@ -112,7 +127,7 @@ jobs:
             libtss2-dev pkg-config binutils
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -122,18 +137,18 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Strip binaries
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           strip --strip-unneeded build/client/license-client
           strip --strip-unneeded build/server/license-server
 
       - name: Package
         id: pkg
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           ARCHIVE="license-system-${VERSION}-linux-arm64.tar.gz"
           mkdir -p dist/license-system
@@ -152,8 +167,8 @@ jobs:
         with:
           name: release-linux-arm64
           path: |
-            license-system/${{ steps.pkg.outputs.archive }}
-            license-system/${{ steps.pkg.outputs.archive }}.sha256
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}.sha256
           retention-days: 7
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -165,6 +180,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect source root
+        id: src
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:GITHUB_WORKSPACE\license-system\CMakeLists.txt") {
+            "root=$env:GITHUB_WORKSPACE\license-system" | Out-File -Append $env:GITHUB_OUTPUT
+          } else {
+            "root=$env:GITHUB_WORKSPACE" | Out-File -Append $env:GITHUB_OUTPUT
+          }
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -196,7 +221,7 @@ jobs:
           exit 1
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         shell: pwsh
         run: |
           cmake -B build -G "Visual Studio 17 2022" -A x64 `
@@ -206,13 +231,13 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         shell: pwsh
         run: cmake --build build --config Release --parallel
 
       - name: Package
         id: pkg
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         shell: pwsh
         run: |
           $archive = "license-system-$env:VERSION-windows-x64.zip"
@@ -237,8 +262,8 @@ jobs:
         with:
           name: release-windows-x64
           path: |
-            license-system/${{ steps.pkg.outputs.archive }}
-            license-system/${{ steps.pkg.outputs.archive }}.sha256
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}.sha256
           retention-days: 7
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -251,11 +276,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: brew install cmake ninja openssl@3 argon2 pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -270,11 +304,11 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Strip and sign ad-hoc
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           strip build/client/license-client
           strip build/server/license-server
@@ -283,7 +317,7 @@ jobs:
 
       - name: Package
         id: pkg
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           ARCHIVE="license-system-${VERSION}-macos-arm64.tar.gz"
           mkdir -p dist/license-system
@@ -302,8 +336,8 @@ jobs:
         with:
           name: release-macos-arm64
           path: |
-            license-system/${{ steps.pkg.outputs.archive }}
-            license-system/${{ steps.pkg.outputs.archive }}.sha256
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}.sha256
           retention-days: 7
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -316,11 +350,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: brew install cmake ninja openssl@3 argon2 pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -335,11 +378,11 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Strip and sign ad-hoc
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           strip build/client/license-client
           strip build/server/license-server
@@ -348,7 +391,7 @@ jobs:
 
       - name: Package
         id: pkg
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           ARCHIVE="license-system-${VERSION}-macos-x64.tar.gz"
           mkdir -p dist/license-system
@@ -367,13 +410,12 @@ jobs:
         with:
           name: release-macos-x64
           path: |
-            license-system/${{ steps.pkg.outputs.archive }}
-            license-system/${{ steps.pkg.outputs.archive }}.sha256
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}
+            ${{ steps.src.outputs.root }}/${{ steps.pkg.outputs.archive }}.sha256
           retention-days: 7
 
   # ────────────────────────────────────────────────────────────────────────────
   # macOS Universal — fat binary combining arm64 + x86_64 via lipo
-  # Runs after both macOS builds finish.
   # ────────────────────────────────────────────────────────────────────────────
   release-macos-universal:
     name: Release / macOS Universal
@@ -383,7 +425,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Download to explicit paths at workspace root (not inside license-system).
+      # Download to explicit absolute paths so they are independent of any
+      # working-directory setting and are easy to find.
       - name: Download macOS arm64 artifact
         uses: actions/download-artifact@v4
         with:
@@ -404,7 +447,7 @@ jobs:
           tar -xzf "$(ls "$GITHUB_WORKSPACE/dl/x64/"*.tar.gz | head -1)" \
             -C "$GITHUB_WORKSPACE/extracted/x64"
 
-      - name: Create universal binaries
+      - name: Create universal binaries with lipo
         run: |
           mkdir -p "$GITHUB_WORKSPACE/universal/license-system"
           lipo -create \
@@ -422,11 +465,15 @@ jobs:
       - name: Package universal
         id: pkg
         run: |
+          # Locate the README from whichever layout was used.
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            SRC="$GITHUB_WORKSPACE/license-system"
+          else
+            SRC="$GITHUB_WORKSPACE"
+          fi
           ARCHIVE="license-system-${VERSION}-macos-universal.tar.gz"
-          cp "$GITHUB_WORKSPACE/license-system/README.md" \
-            "$GITHUB_WORKSPACE/universal/license-system/"
-          cp "$GITHUB_WORKSPACE/license-system/scripts/end_to_end.sh" \
-            "$GITHUB_WORKSPACE/universal/license-system/"
+          cp "$SRC/README.md"                "$GITHUB_WORKSPACE/universal/license-system/"
+          cp "$SRC/scripts/end_to_end.sh"    "$GITHUB_WORKSPACE/universal/license-system/"
           printf '{\n  "version": "1",\n  "server_x25519_pub":  "REPLACE_WITH_OUTPUT_OF_init-keys",\n  "server_ed25519_pub": "REPLACE_WITH_OUTPUT_OF_init-keys"\n}\n' \
             > "$GITHUB_WORKSPACE/universal/license-system/server_pubkeys.json.example"
           tar -czf "$GITHUB_WORKSPACE/$ARCHIVE" \
@@ -461,11 +508,6 @@ jobs:
     permissions:
       contents: write
 
-    # Override global default so all run steps execute from workspace root.
-    defaults:
-      run:
-        working-directory: ${{ github.workspace }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -478,16 +520,16 @@ jobs:
 
       - name: Flatten artifacts into one directory
         run: |
-          mkdir -p all-assets
-          find release-artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.sha256' \) \
-            -exec cp {} all-assets/ \;
+          mkdir -p "$GITHUB_WORKSPACE/all-assets"
+          find "$GITHUB_WORKSPACE/release-artifacts" -type f \
+            \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.sha256' \) \
+            -exec cp {} "$GITHUB_WORKSPACE/all-assets/" \;
           echo "Assets collected:"
-          ls -lh all-assets/
+          ls -lh "$GITHUB_WORKSPACE/all-assets/"
 
       - name: Generate combined checksums file
         run: |
-          cd all-assets
-          # Merge per-file .sha256 into one master file.
+          cd "$GITHUB_WORKSPACE/all-assets"
           cat *.sha256 | sort > "license-system-${VERSION}-checksums.txt"
           echo "Combined checksums:"
           cat "license-system-${VERSION}-checksums.txt"
@@ -503,7 +545,7 @@ jobs:
 
       - name: Write release notes
         run: |
-          cat > release-notes.md << 'NOTES'
+          cat > "$GITHUB_WORKSPACE/release-notes.md" << 'NOTES'
           ## Offline License Key Management System
 
           ### Zero code changes needed

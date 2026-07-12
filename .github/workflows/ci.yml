@@ -4,17 +4,40 @@ on:
   push:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.github/workflows/ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# ──────────────────────────────────────────────────────────────────────────────
+# All jobs share this detection pattern:
+#
+#   - name: Detect source root
+#     id: src
+#     run: |
+#       if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+#         echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+#       else
+#         echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+#       fi
+#
+# This handles two layouts:
+#   • Monorepo  — license-system/ is a subdirectory of the repo root
+#   • Standalone — CMakeLists.txt is at the repo root (no subdirectory)
+# ──────────────────────────────────────────────────────────────────────────────
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
@@ -27,6 +50,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
@@ -36,7 +68,7 @@ jobs:
             libtss2-dev pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -45,11 +77,11 @@ jobs:
             -DLICENSE_ENABLE_TPM=ON
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Test
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 4
 
       - name: Upload test results
@@ -57,7 +89,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results-linux-gcc
-          path: license-system/build/Testing/
+          path: ${{ steps.src.outputs.root }}/build/Testing/
 
   # ────────────────────────────────────────────────────────────────────────────
   # Linux x86_64 — Clang
@@ -69,6 +101,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
@@ -78,7 +119,7 @@ jobs:
             libtss2-dev pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -88,11 +129,11 @@ jobs:
             -DLICENSE_ENABLE_TPM=ON
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Test
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 4
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -105,6 +146,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
@@ -114,7 +164,7 @@ jobs:
             libtss2-dev pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -122,11 +172,11 @@ jobs:
             -DLICENSE_ENABLE_TPM=ON
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Test
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 4
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -138,6 +188,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect source root
+        id: src
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:GITHUB_WORKSPACE\license-system\CMakeLists.txt") {
+            "root=$env:GITHUB_WORKSPACE\license-system" | Out-File -Append $env:GITHUB_OUTPUT
+          } else {
+            "root=$env:GITHUB_WORKSPACE" | Out-File -Append $env:GITHUB_OUTPUT
+          }
 
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -167,7 +227,7 @@ jobs:
         shell: pwsh
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -B build -G "Visual Studio 17 2022" -A x64 `
             -DOPENSSL_ROOT_DIR="${{ steps.openssl.outputs.root }}" `
@@ -176,12 +236,12 @@ jobs:
         shell: pwsh
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --config Release --parallel
         shell: pwsh
 
       - name: Test
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build -C Release --output-on-failure --parallel 4
         shell: pwsh
 
@@ -195,11 +255,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: brew install cmake ninja openssl@3 argon2 pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -212,11 +281,11 @@ jobs:
             -DLICENSE_ENABLE_TPM=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Test
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 4
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -229,11 +298,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: brew install cmake ninja openssl@3 argon2 pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -246,11 +324,11 @@ jobs:
             -DLICENSE_ENABLE_TPM=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Test
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 4
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -281,7 +359,7 @@ jobs:
           failed=0
           for r in "${results[@]}"; do
             if [[ "$r" != "success" && "$r" != "skipped" ]]; then
-              echo "Job failed with result: $r"
+              echo "Job result: $r — FAILED"
               failed=1
             fi
           done

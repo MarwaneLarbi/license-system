@@ -4,12 +4,18 @@ on:
   push:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.github/workflows/sanitizers.yml'
   pull_request:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.github/workflows/sanitizers.yml'
   schedule:
     # Nightly at 03:00 UTC on the default branch.
@@ -34,6 +40,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
@@ -42,10 +57,10 @@ jobs:
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
-        working-directory: license-system
-        # Pass sanitizer flags directly through CMake variables.
-        # Do NOT set -DLICENSE_SANITIZERS=ON here — that flag also adds the
-        # same flags via add_compile/link_options, which would duplicate them.
+        working-directory: ${{ steps.src.outputs.root }}
+        # Sanitizer flags are passed directly through CMake variables.
+        # -DLICENSE_SANITIZERS=OFF prevents CMakeLists from adding them again
+        # (which would duplicate the flags and cause linker errors).
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -59,12 +74,11 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Test under ASan + UBSan
-        working-directory: license-system
-        # Run single-threaded to avoid TSan false positives with ASan.
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -81,6 +95,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
@@ -89,7 +112,7 @@ jobs:
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -103,11 +126,11 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Test under ASan + UBSan
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -123,6 +146,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
@@ -131,8 +163,8 @@ jobs:
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
-        working-directory: license-system
-        # TSan is incompatible with ASan — use it alone.
+        working-directory: ${{ steps.src.outputs.root }}
+        # TSan is incompatible with ASan — used alone.
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -146,18 +178,21 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Test under TSan
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Clang Static Analyzer — replaces MSan
-  # (MSan requires ALL dependencies including OpenSSL to be MSan-instrumented,
-  #  which is not feasible with system OpenSSL. clang-analyzer catches the same
-  #  class of uninitialised-read bugs without that constraint.)
+  # Clang Static Analyzer (replaces MemorySanitizer)
+  #
+  # MSan requires ALL linked libraries — including OpenSSL — to be built with
+  # MSan instrumentation. Using a system OpenSSL binary always produces massive
+  # false-positive reports and will always exit non-zero. The Clang Static
+  # Analyzer detects the same class of uninitialised-read bugs at compile time
+  # without requiring instrumented libraries.
   # ────────────────────────────────────────────────────────────────────────────
   clang-static-analyzer:
     name: Clang Static Analyzer
@@ -165,6 +200,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install dependencies
         run: |
@@ -175,7 +219,7 @@ jobs:
             libtss2-dev pkg-config
 
       - name: Configure
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -185,7 +229,7 @@ jobs:
             -DLICENSE_ENABLE_TPM=ON
 
       - name: Analyze with scan-build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           scan-build \
             --status-bugs \
@@ -201,10 +245,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: scan-build-report
-          path: license-system/scan-build-report.txt
+          path: ${{ steps.src.outputs.root }}/scan-build-report.txt
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Valgrind Memcheck — detect heap errors and leaks
+  # Valgrind Memcheck — detect heap errors and leaks at runtime
   # ────────────────────────────────────────────────────────────────────────────
   valgrind:
     name: Valgrind Memcheck
@@ -212,6 +256,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install dependencies
         run: |
@@ -221,8 +274,8 @@ jobs:
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
-        working-directory: license-system
-        # RelWithDebInfo keeps debug symbols for readable stack traces.
+        working-directory: ${{ steps.src.outputs.root }}
+        # RelWithDebInfo keeps debug symbols for readable Valgrind stack traces.
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -231,11 +284,13 @@ jobs:
             -DLICENSE_SANITIZERS=OFF
 
       - name: Build
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Run tests under Valgrind
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
+        # Run the test binary directly — ctest's --overwrite MemoryCheckCommand
+        # is a CDash/CTestCustom.cmake variable, not a valid ctest CLI flag.
         run: |
           valgrind \
             --tool=memcheck \
@@ -243,7 +298,7 @@ jobs:
             --show-reachable=yes \
             --track-origins=yes \
             --error-exitcode=1 \
-            --suppressions="${GITHUB_WORKSPACE}/.valgrind-suppressions" \
+            --suppressions="$GITHUB_WORKSPACE/.valgrind-suppressions" \
             ./build/tests/license_tests \
             2>&1 | tee valgrind-report.txt
 
@@ -252,4 +307,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: valgrind-report
-          path: license-system/valgrind-report.txt
+          path: ${{ steps.src.outputs.root }}/valgrind-report.txt
