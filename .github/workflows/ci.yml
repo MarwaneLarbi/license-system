@@ -16,13 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: license-system
-
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
-  # Linux — GCC (Release)
+  # Linux x86_64 — GCC
   # ────────────────────────────────────────────────────────────────────────────
   build-test-linux-gcc:
     name: Linux / GCC / Release
@@ -35,11 +31,12 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build \
+            cmake ninja-build g++ \
             libssl-dev libargon2-dev \
             libtss2-dev pkg-config
 
       - name: Configure
+        working-directory: license-system
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -48,9 +45,11 @@ jobs:
             -DLICENSE_ENABLE_TPM=ON
 
       - name: Build
+        working-directory: license-system
         run: cmake --build build --parallel
 
       - name: Test
+        working-directory: license-system
         run: ctest --test-dir build --output-on-failure --parallel 4
 
       - name: Upload test results
@@ -61,7 +60,7 @@ jobs:
           path: license-system/build/Testing/
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Linux — Clang (Release)
+  # Linux x86_64 — Clang
   # ────────────────────────────────────────────────────────────────────────────
   build-test-linux-clang:
     name: Linux / Clang / Release
@@ -79,115 +78,25 @@ jobs:
             libtss2-dev pkg-config
 
       - name: Configure
+        working-directory: license-system
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DLICENSE_BUILD_TESTS=ON \
             -DLICENSE_ENABLE_TPM=ON
-        env:
-          CC: clang
-          CXX: clang++
 
       - name: Build
+        working-directory: license-system
         run: cmake --build build --parallel
 
       - name: Test
+        working-directory: license-system
         run: ctest --test-dir build --output-on-failure --parallel 4
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Windows — MSVC (Release)
-  # ────────────────────────────────────────────────────────────────────────────
-  build-test-windows:
-    name: Windows / MSVC / Release
-    runs-on: windows-2022
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Install OpenSSL via Chocolatey
-        run: choco install openssl --no-progress -y
-        shell: pwsh
-
-      - name: Configure
-        run: |
-          cmake -B build -G "Visual Studio 17 2022" -A x64 `
-            -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL-Win64" `
-            -DLICENSE_BUILD_TESTS=ON `
-            -DLICENSE_ENABLE_TPM=ON
-        shell: pwsh
-
-      - name: Build
-        run: cmake --build build --config Release --parallel
-        shell: pwsh
-
-      - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure --parallel 4
-        shell: pwsh
-
-  # ────────────────────────────────────────────────────────────────────────────
-  # macOS — Apple Silicon / arm64 (Release)
-  # ────────────────────────────────────────────────────────────────────────────
-  build-test-macos-arm64:
-    name: macOS / arm64 / Release
-    runs-on: macos-latest   # macos-14 — Apple M1
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          brew install cmake ninja openssl@3 argon2 pkg-config
-
-      - name: Configure
-        run: |
-          cmake -G Ninja -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
-            -DLICENSE_BUILD_TESTS=ON \
-            -DLICENSE_ENABLE_TPM=OFF
-
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure --parallel 4
-
-  # ────────────────────────────────────────────────────────────────────────────
-  # macOS — Intel / x86_64 (Release)
-  # ────────────────────────────────────────────────────────────────────────────
-  build-test-macos-x64:
-    name: macOS / x86_64 / Release
-    runs-on: macos-13        # Intel runner
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          brew install cmake ninja openssl@3 argon2 pkg-config
-
-      - name: Configure
-        run: |
-          cmake -G Ninja -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
-            -DLICENSE_BUILD_TESTS=ON \
-            -DLICENSE_ENABLE_TPM=OFF
-
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure --parallel 4
-
-  # ────────────────────────────────────────────────────────────────────────────
-  # Linux — ARM64 (Release)
+  # Linux ARM64 — GCC
   # ────────────────────────────────────────────────────────────────────────────
   build-test-linux-arm64:
     name: Linux / ARM64 / Release
@@ -200,11 +109,12 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build \
+            cmake ninja-build g++ \
             libssl-dev libargon2-dev \
             libtss2-dev pkg-config
 
       - name: Configure
+        working-directory: license-system
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -212,37 +122,167 @@ jobs:
             -DLICENSE_ENABLE_TPM=ON
 
       - name: Build
+        working-directory: license-system
         run: cmake --build build --parallel
 
       - name: Test
+        working-directory: license-system
         run: ctest --test-dir build --output-on-failure --parallel 4
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Summary gate — all jobs must pass for PR merge
+  # Windows x64 — MSVC
+  # ────────────────────────────────────────────────────────────────────────────
+  build-test-windows:
+    name: Windows / MSVC / Release
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install OpenSSL
+        run: choco install openssl --no-progress -y
+        shell: pwsh
+
+      - name: Find OpenSSL root
+        id: openssl
+        run: |
+          $paths = @(
+            "C:\Program Files\OpenSSL-Win64",
+            "C:\Program Files\OpenSSL",
+            "C:\OpenSSL-Win64",
+            "C:\OpenSSL"
+          )
+          foreach ($p in $paths) {
+            if (Test-Path "$p\include\openssl\ssl.h") {
+              echo "root=$p" >> $env:GITHUB_OUTPUT
+              Write-Host "Found OpenSSL at: $p"
+              break
+            }
+          }
+        shell: pwsh
+
+      - name: Configure
+        working-directory: license-system
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+            -DOPENSSL_ROOT_DIR="${{ steps.openssl.outputs.root }}" `
+            -DLICENSE_BUILD_TESTS=ON `
+            -DLICENSE_ENABLE_TPM=ON
+        shell: pwsh
+
+      - name: Build
+        working-directory: license-system
+        run: cmake --build build --config Release --parallel
+        shell: pwsh
+
+      - name: Test
+        working-directory: license-system
+        run: ctest --test-dir build -C Release --output-on-failure --parallel 4
+        shell: pwsh
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # macOS ARM64 — Apple Silicon (macos-14)
+  # ────────────────────────────────────────────────────────────────────────────
+  build-test-macos-arm64:
+    name: macOS / arm64 / Release
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake ninja openssl@3 argon2 pkg-config
+
+      - name: Configure
+        working-directory: license-system
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+            -DARGON2_INCLUDE_DIR="$(brew --prefix argon2)/include" \
+            -DARGON2_LIBRARY="$(brew --prefix argon2)/lib/libargon2.a" \
+            -DLICENSE_BUILD_TESTS=ON \
+            -DLICENSE_ENABLE_TPM=OFF
+
+      - name: Build
+        working-directory: license-system
+        run: cmake --build build --parallel
+
+      - name: Test
+        working-directory: license-system
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # macOS x86_64 — Intel (macos-13)
+  # ────────────────────────────────────────────────────────────────────────────
+  build-test-macos-x64:
+    name: macOS / x86_64 / Release
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake ninja openssl@3 argon2 pkg-config
+
+      - name: Configure
+        working-directory: license-system
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+            -DARGON2_INCLUDE_DIR="$(brew --prefix argon2)/include" \
+            -DARGON2_LIBRARY="$(brew --prefix argon2)/lib/libargon2.a" \
+            -DLICENSE_BUILD_TESTS=ON \
+            -DLICENSE_ENABLE_TPM=OFF
+
+      - name: Build
+        working-directory: license-system
+        run: cmake --build build --parallel
+
+      - name: Test
+        working-directory: license-system
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Gate — all matrix jobs must pass for the branch to be mergeable
   # ────────────────────────────────────────────────────────────────────────────
   ci-pass:
     name: CI — All Passed
+    if: always()
     needs:
       - build-test-linux-gcc
       - build-test-linux-clang
+      - build-test-linux-arm64
       - build-test-windows
       - build-test-macos-arm64
       - build-test-macos-x64
-      - build-test-linux-arm64
     runs-on: ubuntu-24.04
-    if: always()
     steps:
-      - name: Check all jobs passed
+      - name: Check all jobs succeeded
         run: |
-          results='${{ toJSON(needs) }}'
-          failed=$(echo "$results" | python3 -c "
-          import sys, json
-          d = json.load(sys.stdin)
-          failed = [k for k,v in d.items() if v['result'] not in ('success','skipped')]
-          print('\n'.join(failed))
-          ")
-          if [ -n "$failed" ]; then
-            echo "Failed jobs:" && echo "$failed"
-            exit 1
-          fi
-          echo "All CI jobs passed."
+          results=(
+            "${{ needs.build-test-linux-gcc.result }}"
+            "${{ needs.build-test-linux-clang.result }}"
+            "${{ needs.build-test-linux-arm64.result }}"
+            "${{ needs.build-test-windows.result }}"
+            "${{ needs.build-test-macos-arm64.result }}"
+            "${{ needs.build-test-macos-x64.result }}"
+          )
+          failed=0
+          for r in "${results[@]}"; do
+            if [[ "$r" != "success" && "$r" != "skipped" ]]; then
+              echo "Job failed with result: $r"
+              failed=1
+            fi
+          done
+          [[ $failed -eq 0 ]] && echo "All CI jobs passed." || exit 1

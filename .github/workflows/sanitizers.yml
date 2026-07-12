@@ -12,7 +12,7 @@ on:
       - 'license-system/**'
       - '.github/workflows/sanitizers.yml'
   schedule:
-    # Run nightly on main to catch regressions early.
+    # Nightly at 03:00 UTC on the default branch.
     - cron: '0 3 * * *'
 
 concurrency:
@@ -21,14 +21,14 @@ concurrency:
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
-  # AddressSanitizer + UndefinedBehaviourSanitizer (GCC)
+  # AddressSanitizer + UndefinedBehaviourSanitizer — GCC
   # ────────────────────────────────────────────────────────────────────────────
   asan-ubsan-gcc:
     name: ASan + UBSan / GCC
     runs-on: ubuntu-24.04
 
     env:
-      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1:abort_on_error=1
+      ASAN_OPTIONS:  halt_on_error=1:detect_leaks=1:abort_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:abort_on_error=1
 
     steps:
@@ -41,31 +41,41 @@ jobs:
             cmake ninja-build g++ \
             libssl-dev libargon2-dev pkg-config
 
-      - name: Configure with ASan + UBSan
+      - name: Configure
+        working-directory: license-system
+        # Pass sanitizer flags directly through CMake variables.
+        # Do NOT set -DLICENSE_SANITIZERS=ON here — that flag also adds the
+        # same flags via add_compile/link_options, which would duplicate them.
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
             -DLICENSE_BUILD_TESTS=ON \
             -DLICENSE_ENABLE_TPM=OFF \
-            -DLICENSE_SANITIZERS=ON \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+            -DLICENSE_SANITIZERS=OFF
 
       - name: Build
+        working-directory: license-system
         run: cmake --build build --parallel
 
-      - name: Run tests under ASan + UBSan
+      - name: Test under ASan + UBSan
+        working-directory: license-system
+        # Run single-threaded to avoid TSan false positives with ASan.
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
-  # AddressSanitizer + UndefinedBehaviourSanitizer (Clang)
+  # AddressSanitizer + UndefinedBehaviourSanitizer — Clang
   # ────────────────────────────────────────────────────────────────────────────
   asan-ubsan-clang:
     name: ASan + UBSan / Clang
     runs-on: ubuntu-24.04
 
     env:
-      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1:abort_on_error=1
+      ASAN_OPTIONS:  halt_on_error=1:detect_leaks=1:abort_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:abort_on_error=1
 
     steps:
@@ -75,30 +85,33 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build clang-18 \
+            cmake ninja-build clang llvm \
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
+        working-directory: license-system
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
             -DLICENSE_BUILD_TESTS=ON \
             -DLICENSE_ENABLE_TPM=OFF \
-            -DLICENSE_SANITIZERS=ON \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
-        env:
-          CC: clang-18
-          CXX: clang++-18
+            -DLICENSE_SANITIZERS=OFF
 
       - name: Build
+        working-directory: license-system
         run: cmake --build build --parallel
 
-      - name: Run tests
+      - name: Test under ASan + UBSan
+        working-directory: license-system
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
-  # ThreadSanitizer (Clang) — detect data races
+  # ThreadSanitizer — detect data races (Clang)
   # ────────────────────────────────────────────────────────────────────────────
   thread-sanitizer:
     name: ThreadSanitizer / Clang
@@ -114,38 +127,41 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build clang-18 \
+            cmake ninja-build clang \
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
+        working-directory: license-system
+        # TSan is incompatible with ASan — use it alone.
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
+            -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
             -DLICENSE_BUILD_TESTS=ON \
             -DLICENSE_ENABLE_TPM=OFF \
-            -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
-        env:
-          CC: clang-18
-          CXX: clang++-18
+            -DLICENSE_SANITIZERS=OFF
 
       - name: Build
+        working-directory: license-system
         run: cmake --build build --parallel
 
-      - name: Run tests under TSan
+      - name: Test under TSan
+        working-directory: license-system
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
-  # MemorySanitizer (Clang) — detect uninitialised reads
-  # MSan requires all dependencies compiled with MSan; we build argon2/nlohmann
-  # via FetchContent and skip OpenSSL (instrument only project code).
+  # Clang Static Analyzer — replaces MSan
+  # (MSan requires ALL dependencies including OpenSSL to be MSan-instrumented,
+  #  which is not feasible with system OpenSSL. clang-analyzer catches the same
+  #  class of uninitialised-read bugs without that constraint.)
   # ────────────────────────────────────────────────────────────────────────────
-  memory-sanitizer:
-    name: MemorySanitizer / Clang
+  clang-static-analyzer:
+    name: Clang Static Analyzer
     runs-on: ubuntu-24.04
-
-    env:
-      MSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
 
     steps:
       - uses: actions/checkout@v4
@@ -154,33 +170,41 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build clang-18 \
-            libssl-dev pkg-config
+            cmake ninja-build clang clang-tools \
+            libssl-dev libargon2-dev \
+            libtss2-dev pkg-config
 
-      - name: Configure (MSan, FetchContent argon2, no TPM)
+      - name: Configure
+        working-directory: license-system
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_COMPILER=clang++-18 \
-            -DLICENSE_BUILD_TESTS=ON \
-            -DLICENSE_ENABLE_TPM=OFF \
-            -DCMAKE_CXX_FLAGS="-fsanitize=memory -fno-omit-frame-pointer -fsanitize-memory-track-origins=2" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=memory"
-        env:
-          CC: clang-18
-          CXX: clang++-18
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DLICENSE_BUILD_TESTS=OFF \
+            -DLICENSE_ENABLE_TPM=ON
 
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Run tests under MSan
-        # Some OpenSSL internals may trigger false positives; suppress them.
+      - name: Analyze with scan-build
+        working-directory: license-system
         run: |
-          MSAN_SYMBOLIZER_PATH=$(which llvm-symbolizer-18 2>/dev/null || true)
-          ctest --test-dir build --output-on-failure --parallel 1
+          scan-build \
+            --status-bugs \
+            -enable-checker alpha.security \
+            -enable-checker alpha.core \
+            -enable-checker alpha.cplusplus \
+            --exclude build/_deps \
+            cmake --build build --parallel \
+            2>&1 | tee scan-build-report.txt
+
+      - name: Upload scan-build report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-build-report
+          path: license-system/scan-build-report.txt
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Valgrind (Memcheck) — on GCC Release binary
+  # Valgrind Memcheck — detect heap errors and leaks
   # ────────────────────────────────────────────────────────────────────────────
   valgrind:
     name: Valgrind Memcheck
@@ -197,27 +221,35 @@ jobs:
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
+        working-directory: license-system
+        # RelWithDebInfo keeps debug symbols for readable stack traces.
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DLICENSE_BUILD_TESTS=ON \
-            -DLICENSE_ENABLE_TPM=OFF
+            -DLICENSE_ENABLE_TPM=OFF \
+            -DLICENSE_SANITIZERS=OFF
 
       - name: Build
+        working-directory: license-system
         run: cmake --build build --parallel
 
       - name: Run tests under Valgrind
+        working-directory: license-system
         run: |
-          ctest --test-dir build \
-            --output-on-failure \
-            --parallel 1 \
-            --overwrite MemoryCheckCommand="$(which valgrind)" \
-            --overwrite MemoryCheckCommandOptions="--leak-check=full --error-exitcode=1 --show-reachable=yes --track-origins=yes --suppressions=$(pwd)/../.valgrind-suppressions" \
-            -T memcheck 2>&1 | tee valgrind-output.txt
+          valgrind \
+            --tool=memcheck \
+            --leak-check=full \
+            --show-reachable=yes \
+            --track-origins=yes \
+            --error-exitcode=1 \
+            --suppressions="${GITHUB_WORKSPACE}/.valgrind-suppressions" \
+            ./build/tests/license_tests \
+            2>&1 | tee valgrind-report.txt
 
-      - name: Upload Valgrind output
+      - name: Upload Valgrind report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: valgrind-report
-          path: valgrind-output.txt
+          path: license-system/valgrind-report.txt
