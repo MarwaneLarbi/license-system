@@ -16,12 +16,17 @@
 
 #include <argon2.h>
 #include <nlohmann/json.hpp>
+// OPENSSL_cleanse — secure memory zeroing.
+#include <openssl/crypto.h>
 
 #include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+
+// chmod(2) — file permission hardening.
+#include <sys/stat.h>
 
 namespace license::keystore {
 

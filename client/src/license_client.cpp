@@ -19,6 +19,9 @@
 #include <sstream>
 #include <stdexcept>
 
+// chmod(2) — file permission hardening.
+#include <sys/stat.h>
+
 namespace fs = std::filesystem;
 using namespace license;
 

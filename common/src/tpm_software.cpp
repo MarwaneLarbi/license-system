@@ -24,6 +24,9 @@
 #include <string>
 #include <vector>
 
+// chmod(2) / fchmod(2) — required for file permission hardening.
+#include <sys/stat.h>
+
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>

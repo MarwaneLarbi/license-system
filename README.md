@@ -357,5 +357,3 @@ The demo uses a software TPM fallback and ephemeral files — no hardware TPM ne
 ## License
 
 MIT. Cryptographic design follows TCG TPM 2.0 Library Specification, IETF RFC 7748 (X25519), RFC 8032 (Ed25519), and RFC 5869 (HKDF).
-#   l i c e n s e - s y s t e m  
- 
