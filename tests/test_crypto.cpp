@@ -196,7 +196,7 @@ TEST_CASE("AES-256-GCM nonce is unique per call", "[crypto][aes-gcm]") {
 
 TEST_CASE("AES-256-GCM wrong key length throws", "[crypto][aes-gcm]") {
     Bytes bad_key(16, 0x00);  // only 128 bits
-    REQUIRE_THROWS(aes256gcm_encrypt(bad_key, {}, {0x01}));
+    REQUIRE_THROWS(aes256gcm_encrypt(bad_key, {}, Bytes{0x01}));
     REQUIRE_THROWS(aes256gcm_decrypt(bad_key, {}, Bytes(28, 0x00)));
 }
 

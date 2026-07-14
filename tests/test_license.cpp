@@ -269,7 +269,7 @@ TEST_CASE("keystore generate and load round-trip", "[keystore]") {
 TEST_CASE("keystore: wrong passphrase throws", "[keystore]") {
     auto tmp_path = fs::temp_directory_path() / "test_keystore_bad.json";
     keystore::Argon2Params fast{.t_cost = 1, .m_cost = 8192, .parallelism = 1};
-    keystore::generate_keystore(tmp_path.string(), "correct", fast, nullptr);
+    (void)keystore::generate_keystore(tmp_path.string(), "correct", fast, nullptr);
     REQUIRE_THROWS(keystore::load_keystore(tmp_path.string(), "wrong", nullptr));
     fs::remove(tmp_path);
 }
@@ -277,7 +277,7 @@ TEST_CASE("keystore: wrong passphrase throws", "[keystore]") {
 TEST_CASE("keystore: generated keys can sign and verify a license", "[keystore]") {
     auto tmp_path = fs::temp_directory_path() / "test_keystore_sign.json";
     keystore::Argon2Params fast{.t_cost = 1, .m_cost = 8192, .parallelism = 1};
-    keystore::generate_keystore(tmp_path.string(), "passphrase", fast, nullptr);
+    (void)keystore::generate_keystore(tmp_path.string(), "passphrase", fast, nullptr);
     auto keys = keystore::load_keystore(tmp_path.string(), "passphrase", nullptr);
 
     auto rec = make_test_record(0);

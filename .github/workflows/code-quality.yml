@@ -56,10 +56,10 @@ jobs:
       - name: Install clang-format
         run: |
           sudo apt-get update -q
-          # Pin to clang-format-12 — files in this repo are formatted with 12.
-          # Upgrading clang-format later requires re-running clang-format -i on
-          # all source files and committing the result.
-          sudo apt-get install -y --no-install-recommends clang-format-12
+          # ubuntu-24.04 (noble) ships clang-format-18; clang-format-12 is not
+          # available in the noble repository.  Source files must be formatted
+          # with clang-format-18 before committing.
+          sudo apt-get install -y --no-install-recommends clang-format-18
 
       - name: Check formatting
         working-directory: ${{ steps.src.outputs.root }}
@@ -74,7 +74,7 @@ jobs:
           fi
 
           echo "Checking ${#files[@]} files..."
-          clang-format-12 --dry-run --Werror "${files[@]}"
+          clang-format-18 --dry-run --Werror "${files[@]}"
           echo "All files are correctly formatted."
 
   # ────────────────────────────────────────────────────────────────────────────

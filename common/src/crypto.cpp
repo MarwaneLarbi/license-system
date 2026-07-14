@@ -116,7 +116,7 @@ std::string base64_encode(std::span<const uint8_t> data) {
         out += B64_CHARS[(v >> 18) & 0x3f];
         out += B64_CHARS[(v >> 12) & 0x3f];
         out += B64_CHARS[(v >> 6) & 0x3f];
-        out += B64_CHARS[(v)&0x3f];
+        out += B64_CHARS[(v) & 0x3f];
         p += 3;
         rem -= 3;
     }

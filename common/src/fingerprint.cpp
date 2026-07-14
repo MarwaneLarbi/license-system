@@ -77,7 +77,7 @@ void write_len32(std::vector<uint8_t>& dst, uint32_t len) {
     dst.push_back(static_cast<uint8_t>((len >> 24) & 0xff));
     dst.push_back(static_cast<uint8_t>((len >> 16) & 0xff));
     dst.push_back(static_cast<uint8_t>((len >> 8) & 0xff));
-    dst.push_back(static_cast<uint8_t>((len)&0xff));
+    dst.push_back(static_cast<uint8_t>((len) & 0xff));
 }
 
 /// Append a length-prefixed string component.
