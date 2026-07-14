@@ -48,8 +48,7 @@ void random_bytes(uint8_t* out, std::size_t n);
 // ──────────────────────────────────────────────
 
 /// Returns true iff a == b, evaluated in constant time w.r.t. content.
-[[nodiscard]] bool ct_equal(std::span<const uint8_t> a,
-                            std::span<const uint8_t> b);
+[[nodiscard]] bool ct_equal(std::span<const uint8_t> a, std::span<const uint8_t> b);
 
 // ──────────────────────────────────────────────
 // SHA-256
@@ -70,19 +69,17 @@ void random_bytes(uint8_t* out, std::size_t n);
  * @param info  Context / application label.
  * @param len   Output length in bytes (≤ 255 * 32).
  */
-[[nodiscard]] Bytes hkdf_sha256(std::span<const uint8_t> ikm,
-                                std::span<const uint8_t> salt,
-                                std::span<const uint8_t> info,
-                                std::size_t              len);
+[[nodiscard]] Bytes hkdf_sha256(std::span<const uint8_t> ikm, std::span<const uint8_t> salt,
+                                std::span<const uint8_t> info, std::size_t len);
 
 // ──────────────────────────────────────────────
 // AES-256-GCM
 // ──────────────────────────────────────────────
 
 struct AeadParams {
-    static constexpr std::size_t KEY_LEN  = 32; // 256 bits
-    static constexpr std::size_t NONCE_LEN = 12; // 96 bits (recommended for GCM)
-    static constexpr std::size_t TAG_LEN  = 16; // 128-bit authentication tag
+    static constexpr std::size_t KEY_LEN = 32;    // 256 bits
+    static constexpr std::size_t NONCE_LEN = 12;  // 96 bits (recommended for GCM)
+    static constexpr std::size_t TAG_LEN = 16;    // 128-bit authentication tag
 };
 
 /**
@@ -94,8 +91,7 @@ struct AeadParams {
  * @param aad   Additional authenticated data (not encrypted, but authenticated).
  * @param plain Plaintext to encrypt.
  */
-[[nodiscard]] Bytes aes256gcm_encrypt(std::span<const uint8_t> key,
-                                      std::span<const uint8_t> aad,
+[[nodiscard]] Bytes aes256gcm_encrypt(std::span<const uint8_t> key, std::span<const uint8_t> aad,
                                       std::span<const uint8_t> plain);
 
 /**
@@ -104,8 +100,7 @@ struct AeadParams {
  * Input format: nonce (12 B) || ciphertext || tag (16 B)
  * Throws std::runtime_error on authentication failure.
  */
-[[nodiscard]] Bytes aes256gcm_decrypt(std::span<const uint8_t> key,
-                                      std::span<const uint8_t> aad,
+[[nodiscard]] Bytes aes256gcm_decrypt(std::span<const uint8_t> key, std::span<const uint8_t> aad,
                                       std::span<const uint8_t> ciphertext);
 
 // ──────────────────────────────────────────────
@@ -186,4 +181,4 @@ struct Ed25519KeyPair {
                                    std::span<const uint8_t> aad,
                                    std::span<const uint8_t> ciphertext);
 
-} // namespace license::crypto
+}  // namespace license::crypto

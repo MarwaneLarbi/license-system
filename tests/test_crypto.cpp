@@ -60,8 +60,8 @@ TEST_CASE("base64 encode / decode round-trip", "[crypto][base64]") {
         REQUIRE(base64_decode("TWFu") == b);
     }
     SECTION("invalid base64 throws") {
-        REQUIRE_THROWS(base64_decode("!!!!")); // invalid chars
-        REQUIRE_THROWS(base64_decode("ABC")); // wrong length (not mod 4)
+        REQUIRE_THROWS(base64_decode("!!!!"));  // invalid chars
+        REQUIRE_THROWS(base64_decode("ABC"));   // wrong length (not mod 4)
     }
 }
 
@@ -103,7 +103,7 @@ TEST_CASE("ct_equal correctness", "[crypto][ct_equal]") {
     Bytes d{1, 2};
     REQUIRE(ct_equal(a, b) == true);
     REQUIRE(ct_equal(a, c) == false);
-    REQUIRE(ct_equal(a, d) == false); // different lengths → false
+    REQUIRE(ct_equal(a, d) == false);  // different lengths → false
     REQUIRE(ct_equal(Bytes{}, Bytes{}) == true);
 }
 
@@ -142,36 +142,36 @@ TEST_CASE("HKDF-SHA256 empty salt is accepted", "[crypto][hkdf]") {
 // ──────────────────────────────────────────────
 
 TEST_CASE("AES-256-GCM encrypt/decrypt round-trip", "[crypto][aes-gcm]") {
-    auto key   = random_bytes(32);
+    auto key = random_bytes(32);
     Bytes aad{'a', 'a', 'd'};
     Bytes plain{'h', 'e', 'l', 'l', 'o'};
 
-    auto ct    = aes256gcm_encrypt(key, aad, plain);
-    auto decr  = aes256gcm_decrypt(key, aad, ct);
+    auto ct = aes256gcm_encrypt(key, aad, plain);
+    auto decr = aes256gcm_decrypt(key, aad, ct);
     REQUIRE(decr == plain);
 }
 
 TEST_CASE("AES-256-GCM empty plaintext", "[crypto][aes-gcm]") {
     auto key = random_bytes(32);
-    auto ct  = aes256gcm_encrypt(key, {}, {});
+    auto ct = aes256gcm_encrypt(key, {}, {});
     REQUIRE(ct.size() == AeadParams::NONCE_LEN + AeadParams::TAG_LEN);
     auto decr = aes256gcm_decrypt(key, {}, ct);
     REQUIRE(decr.empty());
 }
 
 TEST_CASE("AES-256-GCM tampered ciphertext throws", "[crypto][aes-gcm]") {
-    auto key   = random_bytes(32);
+    auto key = random_bytes(32);
     Bytes plain(100, 0x42);
     auto ct = aes256gcm_encrypt(key, {}, plain);
-    ct[20] ^= 0x01; // flip a bit in the ciphertext
+    ct[20] ^= 0x01;  // flip a bit in the ciphertext
     REQUIRE_THROWS(aes256gcm_decrypt(key, {}, ct));
 }
 
 TEST_CASE("AES-256-GCM tampered tag throws", "[crypto][aes-gcm]") {
-    auto key   = random_bytes(32);
+    auto key = random_bytes(32);
     Bytes plain(50, 0x55);
     auto ct = aes256gcm_encrypt(key, {}, plain);
-    ct.back() ^= 0xff; // corrupt tag
+    ct.back() ^= 0xff;  // corrupt tag
     REQUIRE_THROWS(aes256gcm_decrypt(key, {}, ct));
 }
 
@@ -185,18 +185,17 @@ TEST_CASE("AES-256-GCM wrong AAD throws", "[crypto][aes-gcm]") {
 }
 
 TEST_CASE("AES-256-GCM nonce is unique per call", "[crypto][aes-gcm]") {
-    auto key   = random_bytes(32);
+    auto key = random_bytes(32);
     Bytes plain(20, 0xaa);
     auto ct1 = aes256gcm_encrypt(key, {}, plain);
     auto ct2 = aes256gcm_encrypt(key, {}, plain);
     // Nonces (first 12 bytes) must differ (with overwhelming probability).
-    bool nonce_same = std::equal(ct1.begin(), ct1.begin() + 12,
-                                 ct2.begin(), ct2.begin() + 12);
+    bool nonce_same = std::equal(ct1.begin(), ct1.begin() + 12, ct2.begin(), ct2.begin() + 12);
     REQUIRE(!nonce_same);
 }
 
 TEST_CASE("AES-256-GCM wrong key length throws", "[crypto][aes-gcm]") {
-    Bytes bad_key(16, 0x00); // only 128 bits
+    Bytes bad_key(16, 0x00);  // only 128 bits
     REQUIRE_THROWS(aes256gcm_encrypt(bad_key, {}, {0x01}));
     REQUIRE_THROWS(aes256gcm_decrypt(bad_key, {}, Bytes(28, 0x00)));
 }
@@ -207,10 +206,10 @@ TEST_CASE("AES-256-GCM wrong key length throws", "[crypto][aes-gcm]") {
 
 TEST_CASE("X25519 ECDH: both parties derive same shared secret", "[crypto][x25519]") {
     auto alice = x25519_generate_keypair();
-    auto bob   = x25519_generate_keypair();
+    auto bob = x25519_generate_keypair();
 
     auto ss_alice = x25519_exchange(alice.priv, bob.pub);
-    auto ss_bob   = x25519_exchange(bob.priv,   alice.pub);
+    auto ss_bob = x25519_exchange(bob.priv, alice.pub);
 
     REQUIRE(ss_alice.size() == 32);
     REQUIRE(ss_alice == ss_bob);
@@ -218,7 +217,7 @@ TEST_CASE("X25519 ECDH: both parties derive same shared secret", "[crypto][x2551
 
 TEST_CASE("X25519 different key pairs produce different shared secrets", "[crypto][x25519]") {
     auto alice = x25519_generate_keypair();
-    auto bob   = x25519_generate_keypair();
+    auto bob = x25519_generate_keypair();
     auto carol = x25519_generate_keypair();
 
     auto ss1 = x25519_exchange(alice.priv, bob.pub);
@@ -231,7 +230,7 @@ TEST_CASE("X25519 different key pairs produce different shared secrets", "[crypt
 // ──────────────────────────────────────────────
 
 TEST_CASE("Ed25519 sign and verify", "[crypto][ed25519]") {
-    auto kp  = ed25519_generate_keypair();
+    auto kp = ed25519_generate_keypair();
     Bytes msg{'m', 'e', 's', 's', 'a', 'g', 'e'};
     auto sig = ed25519_sign(kp.priv, msg);
     REQUIRE(sig.size() == 64);
@@ -247,7 +246,7 @@ TEST_CASE("Ed25519 wrong public key fails verification", "[crypto][ed25519]") {
 }
 
 TEST_CASE("Ed25519 tampered message fails verification", "[crypto][ed25519]") {
-    auto kp  = ed25519_generate_keypair();
+    auto kp = ed25519_generate_keypair();
     Bytes msg{0x01, 0x02, 0x03};
     auto sig = ed25519_sign(kp.priv, msg);
     msg[0] ^= 0x01;
@@ -255,7 +254,7 @@ TEST_CASE("Ed25519 tampered message fails verification", "[crypto][ed25519]") {
 }
 
 TEST_CASE("Ed25519 tampered signature fails verification", "[crypto][ed25519]") {
-    auto kp  = ed25519_generate_keypair();
+    auto kp = ed25519_generate_keypair();
     Bytes msg{'a', 'b', 'c'};
     auto sig = ed25519_sign(kp.priv, msg);
     sig[0] ^= 0x01;
@@ -271,8 +270,8 @@ TEST_CASE("Hybrid encrypt/decrypt round-trip", "[crypto][hybrid]") {
     Bytes aad{'a', 'a', 'd'};
     Bytes plain(256, 0x42);
 
-    auto ct    = hybrid_encrypt(kp.pub, aad, plain);
-    auto decr  = hybrid_decrypt(kp.priv, aad, ct);
+    auto ct = hybrid_encrypt(kp.pub, aad, plain);
+    auto decr = hybrid_decrypt(kp.priv, aad, ct);
     REQUIRE(decr == plain);
 }
 
@@ -287,7 +286,7 @@ TEST_CASE("Hybrid: wrong private key fails", "[crypto][hybrid]") {
 }
 
 TEST_CASE("Hybrid: wrong AAD fails", "[crypto][hybrid]") {
-    auto kp  = x25519_generate_keypair();
+    auto kp = x25519_generate_keypair();
     Bytes aad{'a', 'a', 'd'};
     Bytes plain{'d', 'a', 't', 'a'};
 
@@ -297,9 +296,9 @@ TEST_CASE("Hybrid: wrong AAD fails", "[crypto][hybrid]") {
 }
 
 TEST_CASE("Hybrid: tampered ciphertext fails", "[crypto][hybrid]") {
-    auto kp  = x25519_generate_keypair();
+    auto kp = x25519_generate_keypair();
     Bytes plain(100, 0x55);
     auto ct = hybrid_encrypt(kp.pub, {}, plain);
-    ct[40] ^= 0x01; // corrupt payload
+    ct[40] ^= 0x01;  // corrupt payload
     REQUIRE_THROWS(hybrid_decrypt(kp.priv, {}, ct));
 }

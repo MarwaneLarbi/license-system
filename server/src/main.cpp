@@ -33,10 +33,10 @@
 #include <nlohmann/json.hpp>
 
 #ifdef _WIN32
-#  include <windows.h>
+    #include <windows.h>
 #else
-#  include <termios.h>
-#  include <unistd.h>
+    #include <termios.h>
+    #include <unistd.h>
 #endif
 
 #include <algorithm>
@@ -56,11 +56,11 @@ using json = nlohmann::json;
 // Argument helpers
 // ──────────────────────────────────────────────
 
-static std::string get_arg(const std::vector<std::string>& args,
-                            const std::string& flag,
-                            const std::string& default_val = {}) {
+static std::string get_arg(const std::vector<std::string>& args, const std::string& flag,
+                           const std::string& default_val = {}) {
     for (std::size_t i = 0; i + 1 < args.size(); ++i)
-        if (args[i] == flag) return args[i + 1];
+        if (args[i] == flag)
+            return args[i + 1];
     return default_val;
 }
 
@@ -83,7 +83,8 @@ static std::string read_passphrase(const std::string& prompt) {
     std::getline(std::cin, pass);
     SetConsoleMode(h, mode);
 #else
-    struct termios old_term{}, new_term{};
+    struct termios old_term {
+    }, new_term{};
     if (::tcgetattr(STDIN_FILENO, &old_term) == 0) {
         new_term = old_term;
         new_term.c_lflag &= ~static_cast<tcflag_t>(ECHO);
@@ -106,7 +107,8 @@ static std::vector<std::string> parse_features(const std::string& s) {
     std::istringstream ss(s);
     std::string f;
     while (std::getline(ss, f, ','))
-        if (!f.empty()) out.push_back(f);
+        if (!f.empty())
+            out.push_back(f);
     return out;
 }
 
@@ -130,7 +132,7 @@ static int cmd_init_keys(const std::vector<std::string>& args) {
     bool as_json = has_flag(args, "--json");
 
     std::string keystore_path = get_arg(args, "--keystore");
-    std::string pub_out_path  = get_arg(args, "--pub-out", "server_pubkeys.json");
+    std::string pub_out_path = get_arg(args, "--pub-out", "server_pubkeys.json");
 
     if (keystore_path.empty())
         return json_error("--keystore <path> is required", as_json);
@@ -147,10 +149,10 @@ static int cmd_init_keys(const std::vector<std::string>& args) {
         return json_error("empty passphrase is not allowed", as_json);
 
     // Optional TPM provider.
-    auto tpm     = tpm::create_provider();
+    auto tpm = tpm::create_provider();
     auto tpm_ptr = tpm->is_hardware() ? tpm.get() : nullptr;
 
-    keystore::Argon2Params params{}; // defaults: t=3, m=128MiB, p=4
+    keystore::Argon2Params params{};  // defaults: t=3, m=128MiB, p=4
     keystore::PublicKeys pub;
     try {
         pub = keystore::generate_keystore(keystore_path, passphrase, params, tpm_ptr);
@@ -160,20 +162,21 @@ static int cmd_init_keys(const std::vector<std::string>& args) {
 
     // Write server_pubkeys.json for the client.
     json pubkeys_json;
-    pubkeys_json["version"]           = "1";
+    pubkeys_json["version"] = "1";
     pubkeys_json["server_x25519_pub"] = pub.x25519_pub_b64;
-    pubkeys_json["server_ed25519_pub"]= pub.ed25519_pub_b64;
+    pubkeys_json["server_ed25519_pub"] = pub.ed25519_pub_b64;
 
     try {
         std::ofstream f(pub_out_path);
-        if (!f) throw std::runtime_error("Cannot write: " + pub_out_path);
+        if (!f)
+            throw std::runtime_error("Cannot write: " + pub_out_path);
         f << pubkeys_json.dump(2) << "\n";
     } catch (const std::exception& e) {
         return json_error(std::string("writing pub-out file: ") + e.what(), as_json);
     }
 
     std::cerr << "[OK] Keystore written to:        " << keystore_path << "\n"
-              << "[OK] Client public keys written: " << pub_out_path  << "\n";
+              << "[OK] Client public keys written: " << pub_out_path << "\n";
     if (tpm_ptr)
         std::cerr << "     (keystore master key additionally TPM-sealed on this machine)\n";
     std::cerr << "\n"
@@ -182,16 +185,16 @@ static int cmd_init_keys(const std::vector<std::string>& args) {
 
     if (as_json) {
         json out;
-        out["success"]            = true;
-        out["keystore_path"]      = keystore_path;
-        out["pub_out_path"]       = pub_out_path;
-        out["tpm_sealed"]         = (tpm_ptr != nullptr);
-        out["server_x25519_pub"]  = pub.x25519_pub_b64;
+        out["success"] = true;
+        out["keystore_path"] = keystore_path;
+        out["pub_out_path"] = pub_out_path;
+        out["tpm_sealed"] = (tpm_ptr != nullptr);
+        out["server_x25519_pub"] = pub.x25519_pub_b64;
         out["server_ed25519_pub"] = pub.ed25519_pub_b64;
         std::cout << out.dump(2) << "\n";
     } else {
-        std::cout << "server_pubkeys.json written to: " << pub_out_path       << "\n"
-                  << "server_x25519_pub:              " << pub.x25519_pub_b64  << "\n"
+        std::cout << "server_pubkeys.json written to: " << pub_out_path << "\n"
+                  << "server_x25519_pub:              " << pub.x25519_pub_b64 << "\n"
                   << "server_ed25519_pub:             " << pub.ed25519_pub_b64 << "\n";
     }
     return EXIT_SUCCESS;
@@ -205,11 +208,11 @@ static int cmd_generate_license(const std::vector<std::string>& args) {
     bool as_json = has_flag(args, "--json");
 
     std::string keystore_path = get_arg(args, "--keystore");
-    std::string blob_b64      = get_arg(args, "--blob");
-    std::string product_id    = get_arg(args, "--product");
-    std::string features_str  = get_arg(args, "--features", "");
-    std::string days_str      = get_arg(args, "--days", "365");
-    std::string max_act_str   = get_arg(args, "--max-activations", "1");
+    std::string blob_b64 = get_arg(args, "--blob");
+    std::string product_id = get_arg(args, "--product");
+    std::string features_str = get_arg(args, "--features", "");
+    std::string days_str = get_arg(args, "--days", "365");
+    std::string max_act_str = get_arg(args, "--max-activations", "1");
 
     if (keystore_path.empty())
         return json_error("--keystore <path> is required", as_json);
@@ -223,7 +226,7 @@ static int cmd_generate_license(const std::vector<std::string>& args) {
         passphrase = read_passphrase("Enter keystore passphrase: ");
 
     // 1. Load keystore.
-    auto tpm     = tpm::create_provider();
+    auto tpm = tpm::create_provider();
     auto tpm_ptr = tpm->is_hardware() ? tpm.get() : nullptr;
 
     std::unique_ptr<keystore::ServerKeys> keys;
@@ -262,28 +265,29 @@ static int cmd_generate_license(const std::vector<std::string>& args) {
 
     // 4. Validate.
     if (req.product_id != product_id)
-        return json_error("request product_id '" + req.product_id +
-                          "' does not match --product '" + product_id + "'", as_json);
+        return json_error("request product_id '" + req.product_id + "' does not match --product '" +
+                              product_id + "'",
+                          as_json);
     if (!timestamp_is_fresh(req.timestamp))
-        return json_error("request timestamp is too old (anti-replay). "
-                          "Ask the customer to regenerate the request.", as_json);
+        return json_error(
+            "request timestamp is too old (anti-replay). "
+            "Ask the customer to regenerate the request.",
+            as_json);
     if (req.fingerprint_hash.empty())
         return json_error("request contains no fingerprint hash", as_json);
 
     // 5. Build license record.
     LicenseRecord rec;
-    rec.license_id            = generate_uuid();
-    rec.product_id            = product_id;
-    rec.fingerprint_hash      = req.fingerprint_hash;
+    rec.license_id = generate_uuid();
+    rec.product_id = product_id;
+    rec.fingerprint_hash = req.fingerprint_hash;
     rec.fingerprint_assurance = req.fingerprint_assurance;
-    rec.features              = parse_features(features_str);
-    rec.issued_at             = static_cast<int64_t>(
-        std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
+    rec.features = parse_features(features_str);
+    rec.issued_at = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count());
     int days = std::stoi(days_str);
-    rec.expires_at = (days > 0)
-        ? rec.issued_at + static_cast<int64_t>(days) * 86400LL
-        : 0LL;
+    rec.expires_at = (days > 0) ? rec.issued_at + static_cast<int64_t>(days) * 86400LL : 0LL;
     rec.max_activations = static_cast<uint32_t>(std::stoul(max_act_str));
 
     // 6. Sign.
@@ -296,31 +300,33 @@ static int cmd_generate_license(const std::vector<std::string>& args) {
 
     // 7. Output.
     std::cerr << "[OK] License generated:\n"
-              << "  license_id:       " << rec.license_id    << "\n"
-              << "  product_id:       " << rec.product_id    << "\n"
+              << "  license_id:       " << rec.license_id << "\n"
+              << "  product_id:       " << rec.product_id << "\n"
               << "  customer_hint:    " << req.customer_hint << "\n"
               << "  fingerprint:      " << rec.fingerprint_hash.substr(0, 16) << "...\n"
               << "  assurance:        " << rec.fingerprint_assurance << "\n"
               << "  features:         ";
-    for (const auto& f : rec.features) std::cerr << f << " ";
+    for (const auto& f : rec.features)
+        std::cerr << f << " ";
     std::cerr << "\n"
-              << "  issued_at:        " << rec.issued_at  << "\n"
-              << "  expires_at:       " << (rec.expires_at ? std::to_string(rec.expires_at) : "never") << "\n"
+              << "  issued_at:        " << rec.issued_at << "\n"
+              << "  expires_at:       "
+              << (rec.expires_at ? std::to_string(rec.expires_at) : "never") << "\n"
               << "  max_activations:  " << rec.max_activations << "\n";
 
     if (as_json) {
         json out;
-        out["success"]            = true;
-        out["token"]              = token;
-        out["license_id"]         = rec.license_id;
-        out["product_id"]         = rec.product_id;
-        out["customer_hint"]      = req.customer_hint;
-        out["fingerprint_hash"]   = rec.fingerprint_hash;
-        out["assurance"]          = rec.fingerprint_assurance;
-        out["features"]           = rec.features;
-        out["issued_at"]          = rec.issued_at;
-        out["expires_at"]         = rec.expires_at;
-        out["max_activations"]    = rec.max_activations;
+        out["success"] = true;
+        out["token"] = token;
+        out["license_id"] = rec.license_id;
+        out["product_id"] = rec.product_id;
+        out["customer_hint"] = req.customer_hint;
+        out["fingerprint_hash"] = rec.fingerprint_hash;
+        out["assurance"] = rec.fingerprint_assurance;
+        out["features"] = rec.features;
+        out["issued_at"] = rec.issued_at;
+        out["expires_at"] = rec.expires_at;
+        out["max_activations"] = rec.max_activations;
         std::cout << out.dump(2) << "\n";
     } else {
         // Token-only on stdout for easy pipe/copy.
@@ -335,25 +341,24 @@ static int cmd_generate_license(const std::vector<std::string>& args) {
 // ──────────────────────────────────────────────
 
 static void print_usage(const char* argv0) {
-    std::cerr
-        << "Usage:\n"
-        << "  " << argv0 << " init-keys\n"
-        << "       --keystore <path>               Encrypted keystore file to create\n"
-        << "       --pub-out  <path>               Write server_pubkeys.json here\n"
-        << "                                       [default: server_pubkeys.json]\n"
-        << "       [--passphrase <pass>]           Prompted if omitted\n"
-        << "       [--json]                        JSON output\n"
-        << "\n"
-        << "  " << argv0 << " generate-license\n"
-        << "       --keystore <path>               Keystore file (from init-keys)\n"
-        << "       --blob     <base64>             Request blob from customer\n"
-        << "       --product  <product_id>         Product identifier\n"
-        << "       [--features f1,f2,...]          Feature list [default: none]\n"
-        << "       [--days    <N>]                 Validity in days [default: 365]\n"
-        << "                                       Use 0 for no expiry\n"
-        << "       [--max-activations <N>]         [default: 1]\n"
-        << "       [--passphrase <pass>]           Prompted if omitted\n"
-        << "       [--json]                        JSON output (token in 'token' field)\n";
+    std::cerr << "Usage:\n"
+              << "  " << argv0 << " init-keys\n"
+              << "       --keystore <path>               Encrypted keystore file to create\n"
+              << "       --pub-out  <path>               Write server_pubkeys.json here\n"
+              << "                                       [default: server_pubkeys.json]\n"
+              << "       [--passphrase <pass>]           Prompted if omitted\n"
+              << "       [--json]                        JSON output\n"
+              << "\n"
+              << "  " << argv0 << " generate-license\n"
+              << "       --keystore <path>               Keystore file (from init-keys)\n"
+              << "       --blob     <base64>             Request blob from customer\n"
+              << "       --product  <product_id>         Product identifier\n"
+              << "       [--features f1,f2,...]          Feature list [default: none]\n"
+              << "       [--days    <N>]                 Validity in days [default: 365]\n"
+              << "                                       Use 0 for no expiry\n"
+              << "       [--max-activations <N>]         [default: 1]\n"
+              << "       [--passphrase <pass>]           Prompted if omitted\n"
+              << "       [--json]                        JSON output (token in 'token' field)\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -370,8 +375,10 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string cmd = args[0];
-    if (cmd == "init-keys")        return cmd_init_keys(args);
-    if (cmd == "generate-license") return cmd_generate_license(args);
+    if (cmd == "init-keys")
+        return cmd_init_keys(args);
+    if (cmd == "generate-license")
+        return cmd_generate_license(args);
 
     std::cerr << "Unknown command: " << cmd << "\n";
     print_usage(argv[0]);

@@ -110,8 +110,8 @@ struct VerifyResult {
  * @param keys            Server public keys loaded from server_pubkeys.json.
  */
 [[nodiscard]] GenerateRequestResult generate_request(const std::string& product_id,
-                                                      const std::string& customer_hint,
-                                                      const ServerKeys& keys);
+                                                     const std::string& customer_hint,
+                                                     const ServerKeys& keys);
 
 /**
  * Activate a license token received from the vendor.
@@ -134,8 +134,7 @@ struct VerifyResult {
  * @param product_id  The product identifier to verify against.
  * @param keys        Server public keys loaded from server_pubkeys.json.
  */
-[[nodiscard]] VerifyResult verify_at_startup(const std::string& product_id,
-                                              const ServerKeys& keys);
+[[nodiscard]] VerifyResult verify_at_startup(const std::string& product_id, const ServerKeys& keys);
 
 /**
  * Remove the locally stored license (deactivate).
