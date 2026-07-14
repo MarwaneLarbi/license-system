@@ -40,7 +40,7 @@ static constexpr uint32_t SEAL_PCR_MASK = (1u << 0) | (1u << 7);
 // ──────────────────────────────────────────────
 
 class ITpmProvider {
-public:
+   public:
     virtual ~ITpmProvider() = default;
 
     /// Is this a hardware TPM backend?
@@ -71,19 +71,17 @@ public:
      * a platform-specific reference used by sign_with_device_key().
      */
     struct DeviceKey {
-        Bytes       pub;      // 32-byte Ed25519 public key
-        std::string handle;   // opaque serialised handle / key ID
+        Bytes pub;           // 32-byte Ed25519 public key
+        std::string handle;  // opaque serialised handle / key ID
     };
-    [[nodiscard]] virtual DeviceKey get_or_create_device_key(
-        const std::string& product_id) = 0;
+    [[nodiscard]] virtual DeviceKey get_or_create_device_key(const std::string& product_id) = 0;
 
     /**
      * Sign `message` using the device private key referenced by `handle`.
      * Returns 64-byte Ed25519 signature.
      */
-    [[nodiscard]] virtual Bytes sign_with_device_key(
-        const std::string&       handle,
-        std::span<const uint8_t> message) = 0;
+    [[nodiscard]] virtual Bytes sign_with_device_key(const std::string& handle,
+                                                     std::span<const uint8_t> message) = 0;
 
     // ── Sealing / Unsealing ──────────────────
 
@@ -95,15 +93,13 @@ public:
      * The blob cannot be unsealed on a different machine or (hardware TPM)
      * after significant firmware/OS changes (PCR values drift).
      */
-    [[nodiscard]] virtual Bytes seal(std::span<const uint8_t> secret,
-                                     const std::string&        label) = 0;
+    [[nodiscard]] virtual Bytes seal(std::span<const uint8_t> secret, const std::string& label) = 0;
 
     /**
      * Unseal a blob previously produced by seal().
      * Throws std::runtime_error if PCR policy fails or blob is corrupt.
      */
-    [[nodiscard]] virtual Bytes unseal(std::span<const uint8_t> blob,
-                                       const std::string&        label) = 0;
+    [[nodiscard]] virtual Bytes unseal(std::span<const uint8_t> blob, const std::string& label) = 0;
 };
 
 // ──────────────────────────────────────────────
@@ -118,4 +114,4 @@ public:
  */
 [[nodiscard]] std::unique_ptr<ITpmProvider> create_provider();
 
-} // namespace license::tpm
+}  // namespace license::tpm

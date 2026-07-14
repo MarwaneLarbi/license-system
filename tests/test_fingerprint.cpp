@@ -13,7 +13,7 @@ using namespace license::fingerprint;
 TEST_CASE("compute() returns non-empty hash", "[fingerprint]") {
     auto fp = compute(/*use_tpm=*/false);
     REQUIRE(!fp.hash.empty());
-    REQUIRE(fp.hash.size() == 64); // SHA-256 hex = 64 chars
+    REQUIRE(fp.hash.size() == 64);  // SHA-256 hex = 64 chars
 }
 
 TEST_CASE("compute() is deterministic (no TPM)", "[fingerprint]") {
@@ -46,8 +46,9 @@ TEST_CASE("verify() rejects modified hash", "[fingerprint]") {
     auto fp = compute(false);
     // Flip the last character.
     std::string bad_hash = fp.hash;
-    bad_hash.back() ^= 1; // toggle one bit in hex representation
-    if (bad_hash.back() == fp.hash.back()) bad_hash.back() = 'x'; // force change
+    bad_hash.back() ^= 1;  // toggle one bit in hex representation
+    if (bad_hash.back() == fp.hash.back())
+        bad_hash.back() = 'x';  // force change
     REQUIRE(verify(bad_hash, false) == false);
 }
 
@@ -63,7 +64,7 @@ TEST_CASE("cpu_id() returns non-empty on x86", "[fingerprint]") {
     auto id = cpu_id();
     REQUIRE(!id.empty());
 #else
-    SUCCEED(); // Skip on non-x86.
+    SUCCEED();  // Skip on non-x86.
 #endif
 }
 
@@ -76,8 +77,8 @@ TEST_CASE("primary_disk_serial() does not throw", "[fingerprint]") {
 TEST_CASE("tpm_ek_hash() returns nullopt or a 32-byte hash", "[fingerprint]") {
     auto h = tpm_ek_hash();
     if (h.has_value()) {
-        REQUIRE(h->size() == 64); // hex string
+        REQUIRE(h->size() == 64);  // hex string
     } else {
-        SUCCEED(); // no hardware TPM — fine in CI
+        SUCCEED();  // no hardware TPM — fine in CI
     }
 }

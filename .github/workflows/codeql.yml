@@ -4,12 +4,18 @@ on:
   push:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.github/workflows/codeql.yml'
   pull_request:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
   schedule:
     # Weekly scan — every Monday at 06:00 UTC.
     - cron: '0 6 * * 1'
@@ -29,12 +35,24 @@ jobs:
     runs-on: ubuntu-24.04
 
     permissions:
-      actions:       read
-      contents:      read
+      actions:         read
+      contents:        read
       security-events: write   # Required to upload SARIF results
 
     steps:
       - uses: actions/checkout@v4
+
+      # Detect whether source lives in license-system/ subdirectory or at root.
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+            echo "prefix=license-system/" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+            echo "prefix=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install build dependencies
         run: |
@@ -52,16 +70,16 @@ jobs:
           queries: security-extended,security-and-quality
           config: |
             paths:
-              - license-system/common
-              - license-system/client
-              - license-system/server
+              - ${{ steps.src.outputs.prefix }}common
+              - ${{ steps.src.outputs.prefix }}client
+              - ${{ steps.src.outputs.prefix }}server
             paths-ignore:
-              - license-system/build
+              - ${{ steps.src.outputs.prefix }}build
               - '**/_deps/**'
 
       # Build the project so CodeQL can trace the compilation.
       - name: Build for CodeQL tracing
-        working-directory: license-system
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \

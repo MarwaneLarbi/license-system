@@ -24,11 +24,14 @@
 #include <string>
 #include <vector>
 
+// chmod(2) / fchmod(2) — required for file permission hardening.
+#include <sys/stat.h>
+
 #ifdef _WIN32
-#  define WIN32_LEAN_AND_MEAN
-#  include <windows.h>
-#  include <dpapi.h>
-#  pragma comment(lib, "crypt32.lib")
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+    #include <dpapi.h>
+    #pragma comment(lib, "crypt32.lib")
 #endif
 
 namespace fs = std::filesystem;
@@ -44,11 +47,13 @@ namespace {
 fs::path software_store_dir() {
 #ifdef _WIN32
     const char* appdata = std::getenv("APPDATA");
-    if (!appdata) throw std::runtime_error("APPDATA not set");
+    if (!appdata)
+        throw std::runtime_error("APPDATA not set");
     return fs::path(appdata) / "license-system";
 #else
     const char* home = std::getenv("HOME");
-    if (!home) throw std::runtime_error("HOME not set");
+    if (!home)
+        throw std::runtime_error("HOME not set");
     return fs::path(home) / ".config" / "license-system";
 #endif
 }
@@ -75,22 +80,23 @@ void ensure_dir(const fs::path& dir) {
 crypto::Bytes derive_machine_key(const std::string& label) {
 #ifndef _WIN32
     // Store a 32-byte machine secret in ~/.config/license-system/.machine_secret
-    auto dir  = software_store_dir();
+    auto dir = software_store_dir();
     auto path = dir / ".machine_secret";
     ensure_dir(dir);
 
     crypto::Bytes secret;
     if (fs::exists(path)) {
         std::ifstream f(path, std::ios::binary);
-        if (!f) throw std::runtime_error("Cannot read machine secret");
-        secret.assign(std::istreambuf_iterator<char>(f),
-                      std::istreambuf_iterator<char>());
+        if (!f)
+            throw std::runtime_error("Cannot read machine secret");
+        secret.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
         if (secret.size() < 32)
             throw std::runtime_error("Machine secret file corrupt");
     } else {
         secret = crypto::random_bytes(32);
         std::ofstream f(path, std::ios::binary | std::ios::trunc);
-        if (!f) throw std::runtime_error("Cannot write machine secret");
+        if (!f)
+            throw std::runtime_error("Cannot write machine secret");
         f.write(reinterpret_cast<const char*>(secret.data()),
                 static_cast<std::streamsize>(secret.size()));
         ::chmod(path.c_str(), 0600);
@@ -108,9 +114,9 @@ crypto::Bytes derive_machine_key(const std::string& label) {
 
 void write_file(const fs::path& p, const crypto::Bytes& data) {
     std::ofstream f(p, std::ios::binary | std::ios::trunc);
-    if (!f) throw std::runtime_error("Cannot write file: " + p.string());
-    f.write(reinterpret_cast<const char*>(data.data()),
-            static_cast<std::streamsize>(data.size()));
+    if (!f)
+        throw std::runtime_error("Cannot write file: " + p.string());
+    f.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
 #ifndef _WIN32
     ::chmod(p.c_str(), 0600);
 #endif
@@ -118,20 +124,22 @@ void write_file(const fs::path& p, const crypto::Bytes& data) {
 
 crypto::Bytes read_file(const fs::path& p) {
     std::ifstream f(p, std::ios::binary);
-    if (!f) throw std::runtime_error("Cannot read file: " + p.string());
-    return crypto::Bytes(std::istreambuf_iterator<char>(f),
-                         std::istreambuf_iterator<char>());
+    if (!f)
+        throw std::runtime_error("Cannot read file: " + p.string());
+    return crypto::Bytes(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 // ──────────────────────────────────────────────
 // SoftwareTpmProvider
 // ──────────────────────────────────────────────
 
 class SoftwareTpmProvider final : public ITpmProvider {
-public:
-    [[nodiscard]] bool        is_hardware()     const noexcept override { return false; }
+   public:
+    [[nodiscard]] bool is_hardware() const noexcept override {
+        return false;
+    }
     [[nodiscard]] std::string assurance_label() const override {
 #ifdef _WIN32
         return "software-dpapi";
@@ -141,7 +149,7 @@ public:
     }
 
     [[nodiscard]] std::optional<Bytes> ek_pub_hash() override {
-        return std::nullopt; // No hardware EK available.
+        return std::nullopt;  // No hardware EK available.
     }
 
     [[nodiscard]] DeviceKey get_or_create_device_key(const std::string& product_id) override {
@@ -151,14 +159,14 @@ public:
         if (fs::exists(path)) {
             // Load existing sealed key.
             auto blob = read_file(path);
-            auto raw  = _unseal_blob(blob, "devkey-" + product_id);
+            auto raw = _unseal_blob(blob, "devkey-" + product_id);
             // raw = 32-byte private seed || 32-byte pub.
             if (raw.size() < 64)
                 throw std::runtime_error("Corrupt device key file");
             Bytes pub(raw.begin() + 32, raw.begin() + 64);
             Bytes priv(raw.begin(), raw.begin() + 32);
             // Reconstruct handle = path string.
-            return DeviceKey{ pub, path.string() };
+            return DeviceKey{pub, path.string()};
         }
 
         // Generate a new Ed25519 keypair (software).
@@ -166,27 +174,24 @@ public:
         // Store sealed: 32-byte seed || 32-byte pub.
         Bytes raw;
         raw.insert(raw.end(), kp.priv.begin(), kp.priv.begin() + 32);
-        raw.insert(raw.end(), kp.pub.begin(),  kp.pub.end());
+        raw.insert(raw.end(), kp.pub.begin(), kp.pub.end());
         auto blob = _seal_blob(raw, "devkey-" + product_id);
         write_file(path, blob);
 
-        return DeviceKey{ kp.pub, path.string() };
+        return DeviceKey{kp.pub, path.string()};
     }
 
-    [[nodiscard]] Bytes sign_with_device_key(const std::string&       handle,
-                                              std::span<const uint8_t> message) override
-    {
+    [[nodiscard]] Bytes sign_with_device_key(const std::string& handle,
+                                             std::span<const uint8_t> message) override {
         auto blob = read_file(fs::path(handle));
-        auto raw  = _unseal_blob(blob, "devkey-" + fs::path(handle).stem().string());
+        auto raw = _unseal_blob(blob, "devkey-" + fs::path(handle).stem().string());
         if (raw.size() < 32)
             throw std::runtime_error("Corrupt device key blob");
         Bytes priv(raw.begin(), raw.begin() + 32);
         return crypto::ed25519_sign(priv, message);
     }
 
-    [[nodiscard]] Bytes seal(std::span<const uint8_t> secret,
-                              const std::string&        label) override
-    {
+    [[nodiscard]] Bytes seal(std::span<const uint8_t> secret, const std::string& label) override {
         Bytes data(secret.begin(), secret.end());
         auto blob = _seal_blob(data, label);
         auto path = seal_file_path(label);
@@ -195,28 +200,24 @@ public:
         return blob;
     }
 
-    [[nodiscard]] Bytes unseal(std::span<const uint8_t> blob,
-                                const std::string&        label) override
-    {
+    [[nodiscard]] Bytes unseal(std::span<const uint8_t> blob, const std::string& label) override {
         Bytes b(blob.begin(), blob.end());
         return _unseal_blob(b, label);
     }
 
-private:
+   private:
 #ifdef _WIN32
     Bytes _seal_blob(const Bytes& data, const std::string& label) {
-        DATA_BLOB in{ static_cast<DWORD>(data.size()),
-                      const_cast<BYTE*>(data.data()) };
+        DATA_BLOB in{static_cast<DWORD>(data.size()), const_cast<BYTE*>(data.data())};
         DATA_BLOB out{};
         DATA_BLOB entropy{};
         auto entropy_bytes = crypto::sha256(
-            std::span<const uint8_t>{
-                reinterpret_cast<const uint8_t*>(label.data()), label.size()});
+            std::span<const uint8_t>{reinterpret_cast<const uint8_t*>(label.data()), label.size()});
         entropy.pbData = entropy_bytes.data();
         entropy.cbData = static_cast<DWORD>(entropy_bytes.size());
 
-        if (!CryptProtectData(&in, L"license-seal", &entropy,
-                               nullptr, nullptr, CRYPTPROTECT_LOCAL_MACHINE, &out))
+        if (!CryptProtectData(&in, L"license-seal", &entropy, nullptr, nullptr,
+                              CRYPTPROTECT_LOCAL_MACHINE, &out))
             throw std::runtime_error("CryptProtectData failed");
         Bytes result(out.pbData, out.pbData + out.cbData);
         LocalFree(out.pbData);
@@ -224,18 +225,16 @@ private:
     }
 
     Bytes _unseal_blob(const Bytes& blob, const std::string& label) {
-        DATA_BLOB in{ static_cast<DWORD>(blob.size()),
-                      const_cast<BYTE*>(blob.data()) };
+        DATA_BLOB in{static_cast<DWORD>(blob.size()), const_cast<BYTE*>(blob.data())};
         DATA_BLOB out{};
         DATA_BLOB entropy{};
         auto entropy_bytes = crypto::sha256(
-            std::span<const uint8_t>{
-                reinterpret_cast<const uint8_t*>(label.data()), label.size()});
+            std::span<const uint8_t>{reinterpret_cast<const uint8_t*>(label.data()), label.size()});
         entropy.pbData = entropy_bytes.data();
         entropy.cbData = static_cast<DWORD>(entropy_bytes.size());
 
-        if (!CryptUnprotectData(&in, nullptr, &entropy,
-                                 nullptr, nullptr, CRYPTPROTECT_LOCAL_MACHINE, &out))
+        if (!CryptUnprotectData(&in, nullptr, &entropy, nullptr, nullptr,
+                                CRYPTPROTECT_LOCAL_MACHINE, &out))
             throw std::runtime_error("CryptUnprotectData failed");
         Bytes result(out.pbData, out.pbData + out.cbData);
         LocalFree(out.pbData);
@@ -271,4 +270,4 @@ std::unique_ptr<ITpmProvider> create_software_provider() {
     return std::make_unique<SoftwareTpmProvider>();
 }
 
-} // namespace license::tpm
+}  // namespace license::tpm

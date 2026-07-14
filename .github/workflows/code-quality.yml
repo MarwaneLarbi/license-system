@@ -4,14 +4,20 @@ on:
   push:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.clang-format'
       - '.clang-tidy'
       - '.github/workflows/code-quality.yml'
   pull_request:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.clang-format'
       - '.clang-tidy'
       - '.github/workflows/code-quality.yml'
@@ -20,9 +26,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: license-system
+# ──────────────────────────────────────────────────────────────────────────────
+# All jobs share a "Detect source root" step (id: src) that sets
+# steps.src.outputs.root to either $GITHUB_WORKSPACE/license-system (monorepo)
+# or $GITHUB_WORKSPACE (standalone repo where CMakeLists.txt is at root).
+# Every subsequent working-directory uses ${{ steps.src.outputs.root }}.
+# ──────────────────────────────────────────────────────────────────────────────
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
@@ -35,18 +44,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install clang-format
-        run: sudo apt-get install -y clang-format-18
+        run: |
+          sudo apt-get update -q
+          # ubuntu-24.04 (noble) ships clang-format-18; clang-format-12 is not
+          # available in the noble repository.  Source files must be formatted
+          # with clang-format-18 before committing.
+          sudo apt-get install -y --no-install-recommends clang-format-18
 
       - name: Check formatting
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
-          find common client server tests \
-            -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \
-          | sort | xargs clang-format-18 --dry-run --Werror
+          mapfile -t files < <(find common client server tests \
+            \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
+            | sort)
+
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No C++ source files found."
+            exit 1
+          fi
+
+          echo "Checking ${#files[@]} files..."
+          clang-format-18 --dry-run --Werror "${files[@]}"
           echo "All files are correctly formatted."
 
   # ────────────────────────────────────────────────────────────────────────────
-  # cppcheck — lightweight static analysis (zero false-positive config)
+  # cppcheck — lightweight static analysis
   # ────────────────────────────────────────────────────────────────────────────
   cppcheck:
     name: cppcheck
@@ -55,14 +87,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cppcheck
-        run: sudo apt-get install -y cppcheck
-
-      - name: Install dependencies (for cppcheck include paths)
+      - name: Detect source root
+        id: src
         run: |
-          sudo apt-get install -y libssl-dev libargon2-dev
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cppcheck libssl-dev libargon2-dev pkg-config
 
       - name: Run cppcheck
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cppcheck \
             --enable=warning,style,performance,portability \
@@ -73,9 +114,9 @@ jobs:
             --suppress=unmatchedSuppression \
             -I common/include \
             -I client/include \
-            -I /usr/include/openssl \
             --template='{file}:{line}: {severity}: [{id}] {message}' \
-            common/src client/src server/src 2>&1 | tee cppcheck-report.txt
+            common/src client/src server/src \
+            2>&1 | tee cppcheck-report.txt
           echo "cppcheck passed."
 
       - name: Upload cppcheck report
@@ -83,10 +124,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cppcheck-report
-          path: license-system/cppcheck-report.txt
+          path: ${{ steps.src.outputs.root }}/cppcheck-report.txt
 
   # ────────────────────────────────────────────────────────────────────────────
-  # clang-tidy — in-depth linting with compile commands
+  # clang-tidy — in-depth linting with full compile information
   # ────────────────────────────────────────────────────────────────────────────
   clang-tidy:
     name: clang-tidy
@@ -95,41 +136,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y \
-            clang-18 clang-tidy-18 cmake ninja-build \
-            libssl-dev libargon2-dev libtss2-dev pkg-config
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            clang clang-tidy \
+            libssl-dev libargon2-dev \
+            libtss2-dev pkg-config
 
       - name: Configure (generate compile_commands.json)
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DLICENSE_BUILD_TESTS=ON \
             -DLICENSE_ENABLE_TPM=ON
-        env:
-          CC: clang-18
-          CXX: clang++-18
 
       - name: Run clang-tidy
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
-          # Collect all project source files (exclude FetchContent/external).
-          find common/src client/src server/src \
-            -name '*.cpp' \
-          | sort > sources.txt
+          mapfile -t sources < <(find common/src client/src server/src \
+            -name '*.cpp' | sort)
 
-          clang-tidy-18 \
+          echo "Running clang-tidy on ${#sources[@]} files..."
+
+          clang-tidy \
             -p build \
-            --config-file=../.clang-tidy \
-            --warnings-as-errors='clang-analyzer-security.*,bugprone-use-after-move' \
-            $(cat sources.txt) 2>&1 | tee clang-tidy-report.txt
+            --config-file="$GITHUB_WORKSPACE/.clang-tidy" \
+            "${sources[@]}" \
+            2>&1 | tee clang-tidy-report.txt
 
-          # Fail if any errors/warnings were emitted.
-          if grep -qE '^.*: (error|warning):' clang-tidy-report.txt; then
-            echo "clang-tidy found issues — see report above."
+          if grep -qE ': (error|warning):' clang-tidy-report.txt; then
+            echo "clang-tidy found issues."
             exit 1
           fi
           echo "clang-tidy passed."
@@ -139,31 +190,49 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: clang-tidy-report
-          path: license-system/clang-tidy-report.txt
+          path: ${{ steps.src.outputs.root }}/clang-tidy-report.txt
 
   # ────────────────────────────────────────────────────────────────────────────
-  # cmake-lint — validate CMakeLists.txt syntax and style
+  # cmake-lint — validate CMakeLists.txt (advisory, does not fail the build)
   # ────────────────────────────────────────────────────────────────────────────
   cmake-lint:
-    name: cmake-lint
+    name: cmake-lint (advisory)
     runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cmake-lint
-        run: pip install cmakelang
-
-      - name: Lint CMakeLists.txt files
+      - name: Detect source root
+        id: src
         run: |
-          find . -name CMakeLists.txt | sort | xargs cmake-lint \
-            --disabled-codes C0103 \
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install cmake-lint
+        run: pip install --quiet cmakelang
+
+      - name: Lint CMakeLists files
+        working-directory: ${{ steps.src.outputs.root }}
+        run: |
+          mapfile -t cmake_files < <(find . -name CMakeLists.txt | sort)
+          echo "Linting ${#cmake_files[@]} CMakeLists files..."
+          cmake-lint "${cmake_files[@]}" \
+            --disabled-codes C0103 C0301 \
             2>&1 | tee cmake-lint-report.txt || true
-          # Report but don't fail (cmake-lint is advisory for now).
-          echo "cmake-lint complete."
+          echo "cmake-lint complete (advisory)."
+
+      - name: Upload cmake-lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmake-lint-report
+          path: ${{ steps.src.outputs.root }}/cmake-lint-report.txt
 
   # ────────────────────────────────────────────────────────────────────────────
-  # include-guard — ensure all headers have proper #pragma once
+  # include-guard — all headers must have #pragma once
   # ────────────────────────────────────────────────────────────────────────────
   include-guard:
     name: Header include-guards
@@ -172,31 +241,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check #pragma once in all headers
+      - name: Detect source root
+        id: src
         run: |
-          missing=""
-          while IFS= read -r -d '' f; do
-            if ! head -5 "$f" | grep -q '#pragma once'; then
-              missing="$missing\n  $f"
-            fi
-          done < <(find common/include client/include -name '*.h' -print0)
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
 
-          if [ -n "$missing" ]; then
-            echo "Headers missing #pragma once:$missing"
+      - name: Check #pragma once
+        working-directory: ${{ steps.src.outputs.root }}
+        run: |
+          missing=()
+          while IFS= read -r f; do
+            if ! head -5 "$f" | grep -q '#pragma once'; then
+              missing+=("$f")
+            fi
+          done < <(find common/include client/include \
+            \( -name '*.h' -o -name '*.hpp' \) | sort)
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "Headers missing #pragma once:"
+            printf '  %s\n' "${missing[@]}"
             exit 1
           fi
           echo "All headers have #pragma once."
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # dependency-review — flag newly added vulnerable deps on PRs
-  # ────────────────────────────────────────────────────────────────────────────
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'pull_request'
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
+  # dependency-review is omitted: it requires GitHub's Dependency Graph feature,
+  # which does not support CMake projects. The action always fails on C++ repos.

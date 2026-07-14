@@ -77,7 +77,6 @@ struct FingerprintResult {
  * Verify that `expected_hash` matches the current machine's fingerprint.
  * Uses constant-time comparison.
  */
-[[nodiscard]] bool verify(const std::string& expected_hash,
-                          bool               use_tpm = true);
+[[nodiscard]] bool verify(const std::string& expected_hash, bool use_tpm = true);
 
-} // namespace license::fingerprint
+}  // namespace license::fingerprint

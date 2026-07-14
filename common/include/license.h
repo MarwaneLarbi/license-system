@@ -26,13 +26,13 @@ using FeatureList = std::vector<std::string>;
 // ──────────────────────────────────────────────
 
 struct LicenseRequest {
-    std::string product_id;       // e.g. "myapp-pro"
-    std::string customer_hint;    // name / email (not verified, for human ref)
-    std::string fingerprint_hash; // hex SHA-256 of hardware fingerprint
-    std::string fingerprint_assurance; // "hardware" | "software"
-    std::string device_pubkey_b64; // base64 Ed25519 device public key
-    int64_t     timestamp{};      // Unix seconds UTC
-    std::string nonce;            // 16 random bytes, base64-encoded
+    std::string product_id;             // e.g. "myapp-pro"
+    std::string customer_hint;          // name / email (not verified, for human ref)
+    std::string fingerprint_hash;       // hex SHA-256 of hardware fingerprint
+    std::string fingerprint_assurance;  // "hardware" | "software"
+    std::string device_pubkey_b64;      // base64 Ed25519 device public key
+    int64_t timestamp{};                // Unix seconds UTC
+    std::string nonce;                  // 16 random bytes, base64-encoded
 };
 
 /// Serialise a request to JSON string.
@@ -46,14 +46,14 @@ struct LicenseRequest {
 // ──────────────────────────────────────────────
 
 struct LicenseRecord {
-    std::string  license_id;          // UUID
-    std::string  product_id;
-    std::string  fingerprint_hash;     // hex SHA-256 (must match activating machine)
-    std::string  fingerprint_assurance; // "hardware" | "software"
-    FeatureList  features;
-    int64_t      issued_at{};         // Unix seconds UTC
-    int64_t      expires_at{};        // Unix seconds UTC (0 = no expiry)
-    uint32_t     max_activations{1};
+    std::string license_id;  // UUID
+    std::string product_id;
+    std::string fingerprint_hash;       // hex SHA-256 (must match activating machine)
+    std::string fingerprint_assurance;  // "hardware" | "software"
+    FeatureList features;
+    int64_t issued_at{};   // Unix seconds UTC
+    int64_t expires_at{};  // Unix seconds UTC (0 = no expiry)
+    uint32_t max_activations{1};
 };
 
 /// Serialise a record to canonical JSON (sorted keys, no whitespace).
@@ -74,13 +74,13 @@ struct LicenseRecord {
  * @param record       The license record.
  * @param ed25519_priv 64-byte Ed25519 private key. SECRET — never logged.
  */
-[[nodiscard]] std::string sign_license(const LicenseRecord&     record,
-                                       std::vector<uint8_t>     ed25519_priv);
+[[nodiscard]] std::string sign_license(const LicenseRecord& record,
+                                       std::vector<uint8_t> ed25519_priv);
 
 struct VerifyResult {
-    bool          valid{false};
+    bool valid{false};
     LicenseRecord record;
-    std::string   error;   // non-empty on failure
+    std::string error;  // non-empty on failure
 };
 
 /**
@@ -100,8 +100,8 @@ struct VerifyResult {
  * @param token        Signed token string from sign_license().
  * @param ed25519_pub  32-byte Ed25519 public key (compiled-in).
  */
-[[nodiscard]] VerifyResult verify_license(const std::string&       token,
-                                          std::vector<uint8_t>     ed25519_pub);
+[[nodiscard]] VerifyResult verify_license(const std::string& token,
+                                          std::vector<uint8_t> ed25519_pub);
 
 // ──────────────────────────────────────────────
 // Anti-replay helpers (server-side)
@@ -112,10 +112,9 @@ struct VerifyResult {
  * @param req_timestamp   Unix seconds from the request.
  * @param max_age_seconds Maximum allowed age (default 24h).
  */
-[[nodiscard]] bool timestamp_is_fresh(int64_t req_timestamp,
-                                      int64_t max_age_seconds = 86400);
+[[nodiscard]] bool timestamp_is_fresh(int64_t req_timestamp, int64_t max_age_seconds = 86400);
 
 /// Generate a new RFC-4122 v4 UUID string.
 [[nodiscard]] std::string generate_uuid();
 
-} // namespace license
+}  // namespace license

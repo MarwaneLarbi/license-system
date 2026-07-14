@@ -40,7 +40,9 @@
 #include <string>
 #include <vector>
 
-namespace license::tpm { class ITpmProvider; }
+namespace license::tpm {
+class ITpmProvider;
+}
 
 namespace license::keystore {
 
@@ -50,8 +52,8 @@ using Bytes = std::vector<uint8_t>;
 // Argon2id parameters (server-side defaults)
 // ──────────────────────────────────────────────
 struct Argon2Params {
-    uint32_t t_cost      = 3;        // iterations
-    uint32_t m_cost      = 1u << 17; // 128 MiB
+    uint32_t t_cost = 3;         // iterations
+    uint32_t m_cost = 1u << 17;  // 128 MiB
     uint32_t parallelism = 4;
 };
 
@@ -59,10 +61,10 @@ struct Argon2Params {
 // Server keys (in memory only — never serialise raw)
 // ──────────────────────────────────────────────
 struct ServerKeys {
-    Bytes x25519_priv;     // 32 B, SECRET
-    Bytes x25519_pub;      // 32 B
-    Bytes ed25519_priv;    // 64 B, SECRET
-    Bytes ed25519_pub;     // 32 B
+    Bytes x25519_priv;   // 32 B, SECRET
+    Bytes x25519_pub;    // 32 B
+    Bytes ed25519_priv;  // 64 B, SECRET
+    Bytes ed25519_pub;   // 32 B
 
     /// Wipe all key material from memory.
     ~ServerKeys();
@@ -87,11 +89,9 @@ struct PublicKeys {
     std::string ed25519_pub_b64;
 };
 
-[[nodiscard]] PublicKeys generate_keystore(
-    const std::string&                      path,
-    const std::string&                      passphrase,
-    const Argon2Params&                     params  = {},
-    license::tpm::ITpmProvider*             tpm     = nullptr);
+[[nodiscard]] PublicKeys generate_keystore(const std::string& path, const std::string& passphrase,
+                                           const Argon2Params& params = {},
+                                           license::tpm::ITpmProvider* tpm = nullptr);
 
 /**
  * Load and decrypt a keystore file.
@@ -103,9 +103,8 @@ struct PublicKeys {
  * Throws std::runtime_error on wrong passphrase, corrupt file, or
  * failed TPM unseal.
  */
-[[nodiscard]] std::unique_ptr<ServerKeys> load_keystore(
-    const std::string&                      path,
-    const std::string&                      passphrase,
-    license::tpm::ITpmProvider*             tpm = nullptr);
+[[nodiscard]] std::unique_ptr<ServerKeys> load_keystore(const std::string& path,
+                                                        const std::string& passphrase,
+                                                        license::tpm::ITpmProvider* tpm = nullptr);
 
-} // namespace license::keystore
+}  // namespace license::keystore

@@ -4,15 +4,21 @@ on:
   push:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.github/workflows/sanitizers.yml'
   pull_request:
     branches: [main, master, develop]
     paths:
-      - 'license-system/**'
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+      - '**/CMakeLists.txt'
       - '.github/workflows/sanitizers.yml'
   schedule:
-    # Run nightly on main to catch regressions early.
+    # Nightly at 03:00 UTC on the default branch.
     - cron: '0 3 * * *'
 
 concurrency:
@@ -21,18 +27,27 @@ concurrency:
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
-  # AddressSanitizer + UndefinedBehaviourSanitizer (GCC)
+  # AddressSanitizer + UndefinedBehaviourSanitizer — GCC
   # ────────────────────────────────────────────────────────────────────────────
   asan-ubsan-gcc:
     name: ASan + UBSan / GCC
     runs-on: ubuntu-24.04
 
     env:
-      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1:abort_on_error=1
+      ASAN_OPTIONS:  halt_on_error=1:detect_leaks=1:abort_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:abort_on_error=1
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install dependencies
         run: |
@@ -41,64 +56,85 @@ jobs:
             cmake ninja-build g++ \
             libssl-dev libargon2-dev pkg-config
 
-      - name: Configure with ASan + UBSan
+      - name: Configure
+        working-directory: ${{ steps.src.outputs.root }}
+        # Sanitizer flags are passed directly through CMake variables.
+        # -DLICENSE_SANITIZERS=OFF prevents CMakeLists from adding them again
+        # (which would duplicate the flags and cause linker errors).
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
             -DLICENSE_BUILD_TESTS=ON \
             -DLICENSE_ENABLE_TPM=OFF \
-            -DLICENSE_SANITIZERS=ON \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+            -DLICENSE_SANITIZERS=OFF
 
       - name: Build
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
-      - name: Run tests under ASan + UBSan
+      - name: Test under ASan + UBSan
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
-  # AddressSanitizer + UndefinedBehaviourSanitizer (Clang)
+  # AddressSanitizer + UndefinedBehaviourSanitizer — Clang
   # ────────────────────────────────────────────────────────────────────────────
   asan-ubsan-clang:
     name: ASan + UBSan / Clang
     runs-on: ubuntu-24.04
 
     env:
-      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1:abort_on_error=1
+      ASAN_OPTIONS:  halt_on_error=1:detect_leaks=1:abort_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:abort_on_error=1
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build clang-18 \
+            cmake ninja-build clang llvm \
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
             -DLICENSE_BUILD_TESTS=ON \
             -DLICENSE_ENABLE_TPM=OFF \
-            -DLICENSE_SANITIZERS=ON \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
-        env:
-          CC: clang-18
-          CXX: clang++-18
+            -DLICENSE_SANITIZERS=OFF
 
       - name: Build
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
-      - name: Run tests
+      - name: Test under ASan + UBSan
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
-  # ThreadSanitizer (Clang) — detect data races
+  # ThreadSanitizer — detect data races (Clang)
   # ────────────────────────────────────────────────────────────────────────────
   thread-sanitizer:
     name: ThreadSanitizer / Clang
@@ -110,77 +146,109 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build clang-18 \
+            cmake ninja-build clang \
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
+        working-directory: ${{ steps.src.outputs.root }}
+        # TSan is incompatible with ASan — used alone.
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
+            -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
             -DLICENSE_BUILD_TESTS=ON \
             -DLICENSE_ENABLE_TPM=OFF \
-            -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
-        env:
-          CC: clang-18
-          CXX: clang++-18
+            -DLICENSE_SANITIZERS=OFF
 
       - name: Build
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
-      - name: Run tests under TSan
+      - name: Test under TSan
+        working-directory: ${{ steps.src.outputs.root }}
         run: ctest --test-dir build --output-on-failure --parallel 1
 
   # ────────────────────────────────────────────────────────────────────────────
-  # MemorySanitizer (Clang) — detect uninitialised reads
-  # MSan requires all dependencies compiled with MSan; we build argon2/nlohmann
-  # via FetchContent and skip OpenSSL (instrument only project code).
+  # Clang Static Analyzer (replaces MemorySanitizer)
+  #
+  # MSan requires ALL linked libraries — including OpenSSL — to be built with
+  # MSan instrumentation. Using a system OpenSSL binary always produces massive
+  # false-positive reports and will always exit non-zero. The Clang Static
+  # Analyzer detects the same class of uninitialised-read bugs at compile time
+  # without requiring instrumented libraries.
   # ────────────────────────────────────────────────────────────────────────────
-  memory-sanitizer:
-    name: MemorySanitizer / Clang
+  clang-static-analyzer:
+    name: Clang Static Analyzer
     runs-on: ubuntu-24.04
-
-    env:
-      MSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build clang-18 \
-            libssl-dev pkg-config
+            cmake ninja-build clang clang-tools \
+            libssl-dev libargon2-dev \
+            libtss2-dev pkg-config
 
-      - name: Configure (MSan, FetchContent argon2, no TPM)
+      - name: Configure
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_COMPILER=clang++-18 \
-            -DLICENSE_BUILD_TESTS=ON \
-            -DLICENSE_ENABLE_TPM=OFF \
-            -DCMAKE_CXX_FLAGS="-fsanitize=memory -fno-omit-frame-pointer -fsanitize-memory-track-origins=2" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=memory"
-        env:
-          CC: clang-18
-          CXX: clang++-18
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DLICENSE_BUILD_TESTS=OFF \
+            -DLICENSE_ENABLE_TPM=ON
 
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Run tests under MSan
-        # Some OpenSSL internals may trigger false positives; suppress them.
+      - name: Analyze with scan-build
+        working-directory: ${{ steps.src.outputs.root }}
         run: |
-          MSAN_SYMBOLIZER_PATH=$(which llvm-symbolizer-18 2>/dev/null || true)
-          ctest --test-dir build --output-on-failure --parallel 1
+          scan-build \
+            --status-bugs \
+            -enable-checker alpha.security \
+            -enable-checker alpha.core \
+            -enable-checker alpha.cplusplus \
+            --exclude build/_deps \
+            cmake --build build --parallel \
+            2>&1 | tee scan-build-report.txt
+
+      - name: Upload scan-build report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-build-report
+          path: ${{ steps.src.outputs.root }}/scan-build-report.txt
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Valgrind (Memcheck) — on GCC Release binary
+  # Valgrind Memcheck — detect heap errors and leaks at runtime
   # ────────────────────────────────────────────────────────────────────────────
   valgrind:
     name: Valgrind Memcheck
@@ -188,6 +256,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect source root
+        id: src
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/license-system" ]; then
+            echo "root=$GITHUB_WORKSPACE/license-system" >> "$GITHUB_OUTPUT"
+          else
+            echo "root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install dependencies
         run: |
@@ -197,27 +274,37 @@ jobs:
             libssl-dev libargon2-dev pkg-config
 
       - name: Configure
+        working-directory: ${{ steps.src.outputs.root }}
+        # RelWithDebInfo keeps debug symbols for readable Valgrind stack traces.
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DLICENSE_BUILD_TESTS=ON \
-            -DLICENSE_ENABLE_TPM=OFF
+            -DLICENSE_ENABLE_TPM=OFF \
+            -DLICENSE_SANITIZERS=OFF
 
       - name: Build
+        working-directory: ${{ steps.src.outputs.root }}
         run: cmake --build build --parallel
 
       - name: Run tests under Valgrind
+        working-directory: ${{ steps.src.outputs.root }}
+        # Run the test binary directly — ctest's --overwrite MemoryCheckCommand
+        # is a CDash/CTestCustom.cmake variable, not a valid ctest CLI flag.
         run: |
-          ctest --test-dir build \
-            --output-on-failure \
-            --parallel 1 \
-            --overwrite MemoryCheckCommand="$(which valgrind)" \
-            --overwrite MemoryCheckCommandOptions="--leak-check=full --error-exitcode=1 --show-reachable=yes --track-origins=yes --suppressions=$(pwd)/../.valgrind-suppressions" \
-            -T memcheck 2>&1 | tee valgrind-output.txt
+          valgrind \
+            --tool=memcheck \
+            --leak-check=full \
+            --show-reachable=yes \
+            --track-origins=yes \
+            --error-exitcode=1 \
+            --suppressions="$GITHUB_WORKSPACE/.valgrind-suppressions" \
+            ./build/tests/license_tests \
+            2>&1 | tee valgrind-report.txt
 
-      - name: Upload Valgrind output
+      - name: Upload Valgrind report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: valgrind-report
-          path: valgrind-output.txt
+          path: ${{ steps.src.outputs.root }}/valgrind-report.txt
